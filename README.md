@@ -1,2 +1,2 @@
-# play-python
-Pythonでのコーディングを色々試験的にトライする場
+# play-real-estate-info
+試験的にトライするリポジトリ
