@@ -74,6 +74,7 @@
 | 2役のClaude Code実装 | メイン=オーケストレーター。実装役=サブエージェント `implementer`、レビュー役=サブエージェント `reviewer`（読取専用＋test実行・改変不可・model inherit）。役割別文脈は各 system prompt で docs を読む（CLAUDE.md非継承のため）。層2は `/code-review` に委譲 | `04` `CLAUDE.md` `.claude/agents/` |
 | 記録様式（ADR・学習メモ・コミット/PR） | コミット/PR=スキル `commit-pr-format`、ADR・学習メモ=スキル `record-format`（実体: `docs/adr/`＝4桁連番1決定1ファイル、`docs/notes/`）。本書=索引・`adr/`=詳細。CLAUDE→docs→skill で統一。バックフィル: ADR-0001 | `record-format` `commit-pr-format` `docs/adr/` `docs/notes/` |
 | IF定義の用途・形式 | 読む参照(md・1API1ファイル)。人間コピペ→AIが構造化。Go型/変換/値域・欠損検証はETLコードに手書き。OpenAPI/codegenは不採用（全string）。自前APIの文書化は将来（「API設計方針」） | `ADR-0002` `docs/api-if-spec/` |
+| ブランチ戦略 | feature → dev → main。main・devは保護線（直接commit/push禁止）。featureへのcommit/push・PR作成は都度許可不要、dev/mainへの取り込み(merge)はオーナーが承認/実行。PRは小さく | `ADR-0003` `CLAUDE.md` |
 | Feedback設計 | 4層（データ正しさ＝本丸／コード健全性／UI規約／統合は目視） | `04` |
 | CI/CD位置づけ | 層1・2をローカルで固めてからCIに載せる | `04` |
 | ドキュメントの器（CLAUDE.md形式＋配置） | 薄い `CLAUDE.md`（地図＋行動指針、200行未満）をルートに新設。詳細は docs/ に委譲し `@import` せずパス参照（遅延ロード＝JIT）。DESIGN.md＝ルート、01/02/04/99＝docs/、README＝ルート | `CLAUDE.md` `04` |
@@ -110,6 +111,9 @@
 | プロンプトテンプレート | Claude Code着手直後 |
 | Codex等MCP併用 | 単体で詰まった時（現状非推奨） |
 | タスク洗い出し・分解 | アーキ確定後、Claude Codeと協働 |
+| MLITデータの扱い方・作る機能の設計（要件定義の進め方を含む） | IF定義（＝素材）の把握とは別問題。素材の把握と並行/後で、PO主導で1つずつ整理してから着手。いきなり実装・要件定義に走らない |
+| 機能・要件を整理する「仕組み」（やるべきことを順に潰す運用） | 上記を進める中で。考慮漏れ防止＝本台帳に預ける運用を徹底 |
+| リモートへの push / 公開範囲のタイミング | origin は接続済み。push 開始時期・公開範囲はオーナー判断（※MLIT利用規約・melta MIT は別行） |
 | 自動E2Eテスト | MVP後 |
 | 実装役のBE/ETL・FE分割 | 2役が安定稼働後 |
 | 品質役の独立/オーケストレーター追加 | BE/FE分割後、検証が片手間で回らなくなったら |

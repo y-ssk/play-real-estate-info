@@ -26,7 +26,9 @@
 - 変更ごとに意味のある最小単位でコミットし、メッセージに「なぜ」と関連ADR番号を書く。
 - コミットは ADR 番号を「記録:」行に紐づける。様式は `docs/commit-pr-format.md`（スキル `commit-pr-format`）、
   ADR・学習メモは `docs/records.md`（スキル `record-format`）。
-- コミット/プッシュはオーナーが指示したときだけ行う。
+- ブランチは **feature → dev → main**。`main`・`dev` は保護線（**直接 commit/push 禁止**。`ADR-0003`）。
+  作業は feature ブランチで行い、まとまりごとに `dev` へ PR。
+- feature への commit/push・PR 作成は**都度許可なく可**。`dev`/`main` への取り込み（merge）は**オーナーが承認/実行**する。
 
 ---
 
