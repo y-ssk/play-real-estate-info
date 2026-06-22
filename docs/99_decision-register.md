@@ -72,10 +72,11 @@
 | 成熟度目標 | MVP本番からLv4。構想段階でLv4発進の前提を作り切る | `04` |
 | エージェント体制 | 2役発進（実装＋レビュー）→状態ベースで段階細分化 | `04` |
 | 2役のClaude Code実装 | メイン=オーケストレーター。実装役=サブエージェント `implementer`、レビュー役=サブエージェント `reviewer`（読取専用＋test実行・改変不可・model inherit）。役割別文脈は各 system prompt で docs を読む（CLAUDE.md非継承のため）。層2は `/code-review` に委譲 | `04` `CLAUDE.md` `.claude/agents/` |
+| 記録様式（ADR・学習メモ・コミット/PR） | コミット/PR=スキル `commit-pr-format`、ADR・学習メモ=スキル `record-format`（実体: `docs/adr/`＝4桁連番1決定1ファイル、`docs/notes/`）。本書=索引・`adr/`=詳細。CLAUDE→docs→skill で統一。バックフィル: ADR-0001 | `record-format` `commit-pr-format` `docs/adr/` `docs/notes/` |
 | Feedback設計 | 4層（データ正しさ＝本丸／コード健全性／UI規約／統合は目視） | `04` |
 | CI/CD位置づけ | 層1・2をローカルで固めてからCIに載せる | `04` |
 | ドキュメントの器（CLAUDE.md形式＋配置） | 薄い `CLAUDE.md`（地図＋行動指針、200行未満）をルートに新設。詳細は docs/ に委譲し `@import` せずパス参照（遅延ロード＝JIT）。DESIGN.md＝ルート、01/02/04/99＝docs/、README＝ルート | `CLAUDE.md` `04` |
-| APIキー秘匿・配置方式 | 実キーはリポ外 `~/.config/config.env`（`chmod 600`）に `export MLIT_API_KEY="..."` で置き、`~/.bashrc` から `source`。**BEは環境変数 `MLIT_API_KEY` 経由でのみ参照**。設定/更新は人間が手動（手順はREADME）。**AIはキーを一切参照禁止**（どの経路でも読取/探索/値表示/コミットを禁止。`.claude/settings.json` のdenyで機械的にも担保）。yaml/sed橋渡し・exampleファイルは廃止。sops+ageは将来枠 | `CLAUDE.md` `README` `.claude/settings.json` |
+| APIキー秘匿・配置方式 | 実キーはリポ外 `~/.config/config.env`（`chmod 600`）に `export MLIT_API_KEY="..."` で置き、`~/.bashrc` から `source`。**BEは環境変数 `MLIT_API_KEY` 経由でのみ参照**。設定/更新は人間が手動（手順はREADME）。**AIはキーを一切参照禁止**（どの経路でも読取/探索/値表示/コミットを禁止。`.claude/settings.json` のdenyで機械的にも担保）。yaml/sed橋渡し・exampleファイルは廃止。sops+ageは将来枠 | `CLAUDE.md` `README` `.claude/settings.json` `ADR-0001` |
 
 ---
 
@@ -106,7 +107,6 @@
 | ドキュメント生成ツール（初期は素のMarkdown） | 公開が必要になった時 |
 | Agent/Skill設定（追加分） | 2役（implementer/reviewer）と commit-pr-format スキルは設定済み。以降の追加（BE/FE分割・新スキル）は状態を見て |
 | プロンプトテンプレート | Claude Code着手直後 |
-| 記録様式（ADR・学習メモ・コミット/PR）の確定 | Step D。暫定: コミット/PR様式はスキル `commit-pr-format` に隠蔽（`CLAUDE.md`→`docs/commit-pr-format.md`→スキルの参照チェーン）。ADR・学習メモのテンプレは未 |
 | Codex等MCP併用 | 単体で詰まった時（現状非推奨） |
 | タスク洗い出し・分解 | アーキ確定後、Claude Codeと協働 |
 | 自動E2Eテスト | MVP後 |

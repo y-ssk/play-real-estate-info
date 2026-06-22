@@ -24,7 +24,8 @@
 - コード変更時は、関連する仕様文書・ADR・必要なら学習メモを同じ変更で更新する
   （コードだけ・文書だけの更新は禁止。根拠と実態を常に一致させる）。
 - 変更ごとに意味のある最小単位でコミットし、メッセージに「なぜ」と関連ADR番号を書く。
-- コミット/PR は `docs/commit-pr-format.md` を参照（様式の実体はスキル `commit-pr-format` に委譲）。
+- コミットは ADR 番号を「記録:」行に紐づける。様式は `docs/commit-pr-format.md`（スキル `commit-pr-format`）、
+  ADR・学習メモは `docs/records.md`（スキル `record-format`）。
 - コミット/プッシュはオーナーが指示したときだけ行う。
 
 ---
@@ -36,7 +37,8 @@
 - `docs/04_harness.md` … AI駆動の進め方（役割・Feedback4層）
 - `docs/99_decision-register.md` … 決め事の台帳（確定の索引・保留のトリガー）
 - `docs/00_claude-code-kickoff.md` … 立ち上げ手順（Step A〜E）
-- `docs/commit-pr-format.md` … コミット/PR 様式の入口（実体はスキル `commit-pr-format`。暫定）
+- `docs/commit-pr-format.md` … コミット/PR 様式の入口（実体はスキル `commit-pr-format`）
+- `docs/records.md` … 記録様式(ADR・学習メモ)の入口（実体はスキル `record-format`。ADR=`docs/adr/`, 学習メモ=`docs/notes/`）
 - `melta-ui/` … 取り込んだデザイン仕様書（components/foundations/tokens）
 
 ---

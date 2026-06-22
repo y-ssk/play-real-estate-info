@@ -1,12 +1,12 @@
 ---
 name: commit-pr-format
-description: MachiLens のコミットメッセージ・PR 説明の様式（暫定）。git commit を打つ前、または PR を作成・記述する前に必ず参照し、本様式に沿わせる。記録様式の確定は Step D。
+description: MachiLens のコミットメッセージ・PR 説明の様式。git commit を打つ前、または PR を作成・記述する前に必ず参照し、本様式に沿わせる。ADR・学習メモの様式は別スキル record-format。
 ---
 
-# コミット / PR の様式（暫定）
+# コミット / PR の様式（確定・Step D）
 
 > 参照チェーン：`CLAUDE.md` → `docs/commit-pr-format.md` → 本スキル。
-> 様式の実体はここに隠蔽する。確定（ADR・学習メモを含む記録様式全体）は Step D（`docs/99_decision-register.md`）。
+> 様式の実体はここに隠蔽する。ADR・学習メモは別スキル `record-format`。
 
 ## 方針（`docs/04_harness.md` 第8節・`CLAUDE.md`）
 - 「なぜ」を厚く残す（本丸＝ETL・データモデリング・地図表現）。周辺は薄く。
