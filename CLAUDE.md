@@ -52,7 +52,11 @@
   **BE(Goアプリ)は環境変数 `MLIT_API_KEY` 経由でのみ参照**する。設定/更新手順は `README.md`。
 - 暗号化コミット方式（sops+age）への昇格は将来枠（`docs/99_decision-register.md`）。
 
-## 役割別コンテキスト（Step C で設定予定）
-- 2役発進（実装役＋レビュー/検証役）。FE役＝`DESIGN.md` 中心、BE/ETL役＝`docs/02` 中心。
-- 役割別の遅延ロードは `.claude/rules/`（paths指定）か サブディレクトリ `CLAUDE.md` で実現する。
-  具体構成は Step C（`docs/00_claude-code-kickoff.md`）で確定する。
+## 役割（2役発進・Step C 確定）
+- PO ↔ **メイン＝オーケストレーター**（このスレッド）。実装と検証をサブエージェントへ委譲する。
+- **実装役** = サブエージェント `implementer`（`.claude/agents/implementer.md`）。BE/ETL は `docs/02`、FE は `DESIGN.md` を読む。
+- **レビュー/検証役** = サブエージェント `reviewer`（`.claude/agents/reviewer.md`。読取専用＋test/lint実行・改変不可）。
+  Feedback 層1（データの正しさ）を最優先で検証。層2 は `/code-review` に委譲。
+- サブエージェントは CLAUDE.md を継承しないため、各 system prompt 冒頭で必要な docs を自分で読む
+  （役割別にコンテキストを絞る＝`docs/04` 第3節）。
+- 将来の第1細分化（実装役→BE/ETL＋FE）は「2役が安定稼働後」（`docs/99`）。今は作らない。
