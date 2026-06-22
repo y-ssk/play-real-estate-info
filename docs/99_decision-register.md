@@ -73,6 +73,7 @@
 | エージェント体制 | 2役発進（実装＋レビュー）→状態ベースで段階細分化 | `04` |
 | 2役のClaude Code実装 | メイン=オーケストレーター。実装役=サブエージェント `implementer`、レビュー役=サブエージェント `reviewer`（読取専用＋test実行・改変不可・model inherit）。役割別文脈は各 system prompt で docs を読む（CLAUDE.md非継承のため）。層2は `/code-review` に委譲 | `04` `CLAUDE.md` `.claude/agents/` |
 | 記録様式（ADR・学習メモ・コミット/PR） | コミット/PR=スキル `commit-pr-format`、ADR・学習メモ=スキル `record-format`（実体: `docs/adr/`＝4桁連番1決定1ファイル、`docs/notes/`）。本書=索引・`adr/`=詳細。CLAUDE→docs→skill で統一。バックフィル: ADR-0001 | `record-format` `commit-pr-format` `docs/adr/` `docs/notes/` |
+| IF定義の用途・形式 | 読む参照(md・1API1ファイル)。人間コピペ→AIが構造化。Go型/変換/値域・欠損検証はETLコードに手書き。OpenAPI/codegenは不採用（全string）。自前APIの文書化は将来（「API設計方針」） | `ADR-0002` `docs/api-if-spec/` |
 | Feedback設計 | 4層（データ正しさ＝本丸／コード健全性／UI規約／統合は目視） | `04` |
 | CI/CD位置づけ | 層1・2をローカルで固めてからCIに載せる | `04` |
 | ドキュメントの器（CLAUDE.md形式＋配置） | 薄い `CLAUDE.md`（地図＋行動指針、200行未満）をルートに新設。詳細は docs/ に委譲し `@import` せずパス参照（遅延ロード＝JIT）。DESIGN.md＝ルート、01/02/04/99＝docs/、README＝ルート | `CLAUDE.md` `04` |
