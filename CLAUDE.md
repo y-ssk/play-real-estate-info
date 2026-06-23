@@ -28,7 +28,7 @@
   ADR・学習メモは `docs/records.md`（スキル `record-format`）。
 - ブランチは **feature → dev → main**。`main`・`dev` は保護線（**直接 commit/push 禁止**。`ADR-0003`）。
   作業は feature ブランチで行い、まとまりごとに `dev` へ PR。
-- feature への commit/push・PR 作成は**都度許可なく可**。`dev`/`main` への取り込み（merge）は**オーナーが承認/実行**する。
+- feature への commit/push・PR 作成は**都度許可なく可**。**`feature→dev` の取り込み（merge）は AI が実行可**（PR→マージ→ブランチ整理まで）。**`dev→main` の取り込みはオーナーが承認/実行**（`ADR-0003` 更新）。
 
 ---
 
