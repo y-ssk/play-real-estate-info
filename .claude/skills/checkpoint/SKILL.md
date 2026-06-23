@@ -21,4 +21,4 @@ description: セッションの区切り/終了時に prompts/resume.md の「�
 - 【固定】ゾーンの改変。
 - 秘匿情報（APIキー等）の記入。
 
-> 関連: 再開（読み込み）側は README「セッション再開」の1行テンプレ。テンプレ原本は `prompts/_resume.template.md`。
+> 関連: 再開（読み込み・load）側はスキル `resume`（`/resume`）。運用全体は README「セッション再開」。テンプレ原本は `prompts/_resume.template.md`。
