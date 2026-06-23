@@ -42,6 +42,7 @@
 - `docs/commit-pr-format.md` … コミット/PR 様式の入口（実体はスキル `commit-pr-format`）
 - `docs/records.md` … 記録様式(ADR・学習メモ)の入口（実体はスキル `record-format`。ADR=`docs/adr/`, 学習メモ=`docs/notes/`）
 - `docs/api-if-spec/` … 各MLIT APIのIF定義集（1API1ファイル）。`_paste.md` に貼り→`/if-spec` で構造化。実装前に必ず確認
+- `prompts/` … セッション再開の仕組み。`_resume.template.md`(固定枠・tracked)＋`resume.md`(現在地・local)。再開=1行貼付で `resume.md` を読む、更新=スキル `/checkpoint`。権威は `docs/99`
 - `melta-ui/` … 取り込んだデザイン仕様書（components/foundations/tokens）
 
 ---

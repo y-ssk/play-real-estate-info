@@ -25,3 +25,10 @@ CLAUDE.local.md
 
 # === IF定義 貼り付け用インボックス（生コピペの中間物・コミットしない）===
 docs/api-if-spec/_paste.md
+
+# === プロンプト（再開用・履歴）: 配下のファイルのみ無視。テンプレ/.gitkeep は残す ===
+/prompts/**
+!/prompts/history/
+!/prompts/.gitkeep
+!/prompts/history/.gitkeep
+!/prompts/_resume.template.md
