@@ -150,13 +150,15 @@ API制約とデータ品質を吸収する仕掛けを最初から組み込む�
 │   ├── analysis/        # 集計・指標算出
 │   ├── tiles/           # タイルのプロキシ＋キャッシュ
 │   └── handler/         # APIハンドラ
-├── migrations/          # PostGISスキーマ（PostGIS拡張・空間index）
-├── web/                 # フロント（ビルド成果物をGoが配信）
+├── migrations/          # PostGISスキーマ（生SQL＝golang-migrate。PostGIS拡張・空間index）
+├── web/                 # フロント（ビルド成果物をGoが embed 配信）
 └── go.mod
 ```
 
+- **ローカルDB**：PostGIS コンテナ（`postgis/postgis` イメージ・Rancher Desktop）。**マイグレーションは生SQL（golang-migrate）**＝スキーマの権威をSQLに置き `geometry(...,SRID)`・GiST空間索引・拡張を明示制御。ORMの自動マイグレは空間データで不都合のため不採用（`ADR-0013`）。
+
 未確定（実装着手時に決定。`99_decision-register.md`）：
-- PostGIS↔Go のアクセス方式（ORM／クエリビルダ／生SQL。空間クエリは生SQL寄りになりやすい）
+- **クエリ層**：Goからの DB アクセス方式（生SQL／sqlc／クエリビルダ。空間クエリは生SQL寄り。sqlc 候補・マイグレ生SQLと両立）※マイグレ自体は確定（上記）
 - API設計方針（REST／エンドポイント粒度、データAPIとタイル配信の分離方法）
 
 ---
@@ -164,12 +166,13 @@ API制約とデータ品質を吸収する仕掛けを最初から組み込む�
 ## 7. フロント構成
 
 - **スタイル土台**：Tailwind ＋ melta-ui（MIT）の設計仕様書を取り込んだデザインシステム。UI規約は `DESIGN.md`。melta-uiは器非依存なので、フロント器の確定を待たずに取り込み・運用できる。
-- **器（フレームワーク）**：未確定。Reactを想定するが「過去に使った」ではなく評価軸（透明性→普及度→部品→レスポンシブ→地図統合）で確定する（`99_decision-register.md`）。
+- **器・ビルド・テスト（`ADR-0013`）**：器＝**React**／ビルド＝**Rsbuild（Rspack）**／テスト＝**Jest＋React Testing Library**（E2EはPlaywright・MVP後）。Vitestは攻撃面回避で不採用、Vite系譜から距離を置く。ビルドツールは**可逆な決定**（後で乗換可）。
+- **地図エンジン（`ADR-0013`）**：**MapLibre GL JS**（`react-map-gl/maplibre`）。データ駆動スタイルで分野切替、ベクタタイルでメッシュ移行に強い、トークン不要＝透明性。
+- **ディレクトリ構成（機能単位 / feature-based・`ADR-0013`）**：`web/src/` = `app/`（起動・プロバイダ・全体レイアウト）／`features/`（map・filters・karte・comparison・pins）／`components/`（melta-ui取り込み層）／`lib/`（APIクライアント・地図初期化・共通型・出典/欠損）／`styles/`（tokens）／`test/`。思想は学習メモ `docs/notes/2026-06-24-fe-architecture-feature-based.md`。
 - **地図UI**：③開閉式パネル（PC）。閉＝地図没入／開＝固定領域で読み込み。モバイルはボトムシート展開（PC実装後）。詳細は `DESIGN.md`。
 - **PC/モバイル両対応**が前提。
 
 未確定（実装着手時に決定）：
-- 地図エンジン（MapLibre想定）の確定
 - ベースマップ（地図下地タイル）の調達先（自前／外部）※MLITとは別の依存
 - 状態管理・データ取得ライブラリ
 - 地図とフロントの状態管理の統合（開閉状態を含む）
