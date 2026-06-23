@@ -1,6 +1,6 @@
 ---
-name: resume
-description: 新セッションの再開（load）。prompts/resume.md とその参照先（docs/99・直近ADR）を読んで現在地を把握し、要約を一度提示してからオーナーの指示を待つ。前のめり禁止。整理（save）側は checkpoint。
+name: catchup
+description: 新セッションの再開（load）。prompts/resume.md とその参照先（docs/99・直近ADR）を読んで現在地を把握し、要約を一度提示してからオーナーの指示を待つ。前のめり禁止。整理（save）側は checkpoint。（旧名 resume＝Claude Code 標準 /resume と衝突したため改名）
 ---
 
 # 再開（セッションの load）
@@ -28,4 +28,5 @@ description: 新セッションの再開（load）。prompts/resume.md とその
 - resume.md の書き換え（更新は `checkpoint` の役目）。
 - 権威の取り違え。roadmap の正は `docs/99`。resume.md はその要約。
 
-> 関連: 整理・書き戻し（save）側は スキル `checkpoint`。運用全体は README「セッション再開」。テンプレ原本は `prompts/_resume.template.md`。
+> 関連: 整理・書き戻し（save）側は スキル `checkpoint`（`/checkpoint`）。運用全体は README「セッション再開」。テンプレ原本は `prompts/_resume.template.md`。
+> 注: 起動は `/catchup`。状態ファイル名 `prompts/resume.md` は据え置き（スキルではなく再開プロンプト本体）。

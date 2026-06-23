@@ -25,9 +25,9 @@
 
 ### 手順（仕組み）
 1. **初回 / clone 後（無ければ）**：`prompts/_resume.template.md` を `prompts/resume.md` に複製し、現在地を埋める（`/checkpoint` でも可）。
-2. **再開（load）**：新セッションで **`/resume`** を実行（スキル `resume`）。`prompts/resume.md` とその参照先（`docs/99`・直近ADR）を読んで現在地を要約し、指示待ちで止まる。
+2. **再開（load）**：新セッションで **`/catchup`** を実行（スキル `catchup`）。`prompts/resume.md` とその参照先（`docs/99`・直近ADR）を読んで現在地を要約し、指示待ちで止まる。※旧名 `/resume` は Claude Code 標準コマンド（過去セッション切替）と衝突するため改名した。
    ```
-   /resume
+   /catchup
    ```
    （スキルを使わず1行貼付でも可：`prompts/resume.md を読んで現在地を復元し、続きから進めて。`）
 3. **チェックポイント（save）**：区切り/終了時に **`/checkpoint`** を実行 → 旧 `resume.md` を `history/` に控え、`resume.md` の【更新】ゾーン（現在地・優先順・直近）だけを最新化する（固定ゾーンは触らない）。
