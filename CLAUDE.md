@@ -43,6 +43,7 @@
 - `docs/records.md` … 記録様式(ADR・学習メモ)の入口（実体はスキル `record-format`。ADR=`docs/adr/`, 学習メモ=`docs/notes/`）
 - `docs/api-if-spec/` … 各MLIT APIのIF定義集（1API1ファイル）。`_paste.md` に貼り→`/if-spec` で構造化。実装前に必ず確認
 - `prompts/` … セッション再開の仕組み。`_resume.template.md`(固定枠・tracked)＋`resume.md`(現在地・local)。再開=1行貼付で `resume.md` を読む、更新=スキル `/checkpoint`。権威は `docs/99`
+- `docs/glossary.md` … 用語辞書（**local・gitignore**。無ければ新規作成）。**言葉づかいルール＝英語由来用語は日本語の定訳を優先し直訳借用語を使わない／初出の専門語は1行で言い換え**。判断した「避ける語/正しい語」をここに蓄積
 - `melta-ui/` … 取り込んだデザイン仕様書（components/foundations/tokens）
 
 ---
