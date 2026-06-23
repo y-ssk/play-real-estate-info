@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "deny": [
+      "Read(/home/ys-sunterras/.config/config.env)",
+      "Edit(/home/ys-sunterras/.config/config.env)",
+      "Read(./.env)",
+      "Read(./config.env)",
+      "Read(./*.env)",
+      "Edit(./.env)",
+      "Edit(./config.env)",
+      "Edit(./*.env)"
+    ]
+  }
+}
