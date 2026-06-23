@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: セッションの区切り/終了時に prompts/resume.md の「現在地・優先順・直近」を最新化し、旧版を prompts/history/ に控える。固定テンプレ部は触らない。次回 /resume(1行貼付) で復元できる状態にする。
+description: セッションの区切り/終了時に prompts/resume.md の「現在地・優先順・直近」を最新化し、旧版を prompts/history/ に控える。固定テンプレ部は触らない。次回 /catchup で復元できる状態にする。
 ---
 
 # チェックポイント（再開プロンプトの更新）
@@ -21,4 +21,4 @@ description: セッションの区切り/終了時に prompts/resume.md の「�
 - 【固定】ゾーンの改変。
 - 秘匿情報（APIキー等）の記入。
 
-> 関連: 再開（読み込み・load）側はスキル `resume`（`/resume`）。運用全体は README「セッション再開」。テンプレ原本は `prompts/_resume.template.md`。
+> 関連: 再開（読み込み・load）側はスキル `catchup`（`/catchup`）。運用全体は README「セッション再開」。テンプレ原本は `prompts/_resume.template.md`。
