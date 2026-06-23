@@ -22,3 +22,6 @@ secret.*.yaml
 # === ローカル個別 ===
 *.local
 CLAUDE.local.md
+
+# === IF定義 貼り付け用インボックス（生コピペの中間物・コミットしない）===
+docs/api-if-spec/_paste.md
