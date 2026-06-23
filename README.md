@@ -13,6 +13,20 @@
 - `docs/04_harness.md` — AI駆動の進め方
 - `docs/99_decision-register.md` — 決め事の台帳（確定・保留）
 
+## セッション再開（運用ルール）
+
+新しいセッションを始めたら、**次の1行をチャットに貼るだけ**（roadmap 等が長いので本体はファイルから読み込ませる）:
+
+```
+prompts/resume.md を読んで現在地を復元し、続きから進めて。
+```
+
+→ AI が `prompts/resume.md`（現在地・優先順 P0〜P5・読むべき文書）を読み込んで再開する。
+
+- `prompts/` 配下は **gitignore 対象**（ローカルの作業状態。ディレクトリ構造だけ git に残す）。
+- ルート `prompts/resume.md` ＝ 再開時に読み込むプロンプト。大きく更新したら旧版を `prompts/history/<日付>-resume.md` に控える。
+- 権威ある記録は `docs/99_decision-register.md`（バックログ）と `docs/adr/`。`resume.md` はそれらへの入口＋現在地。
+
 ## 秘匿情報（APIキー）— 人間が手動で設定する
 
 APIキーはリポジトリに置かず、**リポジトリ外の `~/.config/config.env` に置いて環境変数で渡す**。

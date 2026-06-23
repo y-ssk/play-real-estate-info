@@ -42,6 +42,7 @@
 - `docs/commit-pr-format.md` … コミット/PR 様式の入口（実体はスキル `commit-pr-format`）
 - `docs/records.md` … 記録様式(ADR・学習メモ)の入口（実体はスキル `record-format`。ADR=`docs/adr/`, 学習メモ=`docs/notes/`）
 - `docs/api-if-spec/` … 各MLIT APIのIF定義集（1API1ファイル）。`_paste.md` に貼り→`/if-spec` で構造化。実装前に必ず確認
+- `prompts/resume.md` … セッション再開時に読む「現在地＋優先順(P0〜P5)」（gitignore対象・ローカル。権威は `docs/99`）
 - `melta-ui/` … 取り込んだデザイン仕様書（components/foundations/tokens）
 
 ---
