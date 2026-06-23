@@ -41,7 +41,7 @@
 - `docs/00_claude-code-kickoff.md` … 立ち上げ手順（Step A〜E）
 - `docs/commit-pr-format.md` … コミット/PR 様式の入口（実体はスキル `commit-pr-format`）
 - `docs/records.md` … 記録様式(ADR・学習メモ)の入口（実体はスキル `record-format`。ADR=`docs/adr/`, 学習メモ=`docs/notes/`）
-- `docs/api-if-spec/` … 各MLIT APIのIF定義集（1API1ファイル。`_TEMPLATE.md` を複製して転記。実装前に必ず確認）
+- `docs/api-if-spec/` … 各MLIT APIのIF定義集（1API1ファイル）。生コピペ→スキル `/if-spec` で構造化。実装前に必ず確認
 - `melta-ui/` … 取り込んだデザイン仕様書（components/foundations/tokens）
 
 ---
