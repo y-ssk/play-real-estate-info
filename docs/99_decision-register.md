@@ -107,6 +107,7 @@
 | FE状態管理・データ取得（優先3-3） | **サーバ状態＝TanStack Query**(JSON系values/karte/絞り込みのキャッシュ/再取得/失敗。geometry/タイルは行き先AでMapLibreが取得＝守備範囲外)。**クライアントUI状態＝Zustand**(複数機能で共有・selector部分購読・純ローカルはuseState)。**ピン＝Zustand persist→localStorage**。**選択単位は`{unit_kind, unit_id}`で持つ**(store/Queryキー/将来URL＝メッシュ移行の継ぎ目)。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。Redux/自前fetch不採用。Jotaiは有力対案だがMVPの少数横断状態には過剰(URL本格化/細粒度化で再評価) | `ADR-0018` `02`§7 `notes/2026-06-25-fe-state-management` |
 | HTTPルーティング機構（足場） | **標準 `net/http`（Go 1.22+ ServeMux）**＝メソッド＋パスワイルドカード/`PathValue`でタイル`{z}/{x}/{y}`も標準で捌ける・依存ゼロ＝攻撃面最小（`ADR-0013`軸）・一体型と相性。`chi`は標準互換ゆえ**可逆な差し込み先**（ルート増で手書きが苦しくなったら）・`gin`/`echo`は独自Context型で過剰につき捨てる。Go1.22+は`go.mod`で固定。お作法＝`backend-conventions`§4 | `ADR-0020` `backend-conventions`§4 `02`§6 `notes/2026-06-25-http-routing` |
 | パッケージ管理・Node版（足場） | **pnpm**（Node同梱`corepack`で版固定＝`package.json`の`packageManager`欄）。採用根拠は速さでなく**幽霊依存（宣言してない間接依存をimportできる罠）を構造的に弾く堅牢性**。npmは平坦`node_modules`で幽霊依存を許す/corepackで優位消滅・yarnは却下。**Node版＝`.nvmrc`＋`engines`**（現行LTS・最新LTSは実装時に公式確認）。お作法＝`frontend-conventions`§11 | `ADR-0021` `frontend-conventions`§11 `notes/2026-06-25-package-managers` |
+| N03境界の投入機構（足場/ETL入口） | **ハイブリッド**＝投入(シェープ→PostGIS=機械的)は**`shp2pgsql`(PostGIS同梱・`-W CP932`・`-s`→6668・`-I`)**／正規化(5桁コード化・年度固定・値域=本丸)は**SQL・Go**(継ぎ目=投入ツール非依存)。形式変更/複雑な再投影時のみ`ogr2ogr`(GDAL)へ寄せる(可逆)。取得=年1回低頻度ゆえ直リンクscriptで半自動。Go全実装は周辺過剰で却下。お作法＝`backend-conventions`§5 | `ADR-0022` `backend-conventions`§5 `ADR-0014` `notes/2026-06-25-n03-ingest` |
 
 ---
 
@@ -156,7 +157,7 @@
 | ~~テストカバレッジの方針（BE/FE共通）~~ | ✅確定（深掘り済・学習メモ `notes/2026-06-25-test-coverage`）＝**(a)計測/可視化のみ・当面ゲートなし**（`go test -cover`/Jest`--coverage`）**(b)本丸(層1)の分岐カバレッジを重視・周辺の%は追わない (c)差分カバレッジを主signal**（グローバル%は参考）。reviewer層2に「本丸の変更に分岐テストがあるか」。CIゲート化はCI着手時に再検討。conventions テスト章へ反映予定 |
 | ~~doc/コメントの作法（JSDoc/godoc・WHAT/WHY）~~ | ✅確定（`notes/2026-06-25-doc-comment-style`・backend §3／frontend §6）＝**WHATは書かずWHY**／**公開（エクスポート）シンボルは日本語doc必須・内部は必須にしない**（必要時WHYのみ）／TSは型をdocに重複させない（JSDoc/TSDoc流）・Goはgodoc＝識別子名始まり＋structタグ（`json`/`db`）／複雑処理はWHY＋ADRリンク |
 | ~~PostGIS↔Goアクセス方式（クエリ層）~~ | ✅確定（`ADR-0017`・優先3-2）＝pgx＋sqlc既定＋生SQL例外のハイブリッド。お作法は生きた文書`docs/backend-conventions.md`§1。残件（geometry型override・縦持ち動的絞り込みの具体SQL）はBE実装着手時 |
-| N03（行政区域）のロード機構・取得自動化 | ETL実装着手時。①Goの`ingest`に載せる ②`ogr2ogr`/`shp2pgsql`の運用手順 ③ハイブリッド（投入=ogr2ogr・正規化=SQL/Go）。境界は年1回・低頻度で手作業寄りも合理。取得はブラウザDLか直リンクのスクリプト化か。文字コード(CP932→UTF-8)正規化を手順に含める。調達先・後処理の洗い出しは `ADR-0014` |
+| ~~N03（行政区域）のロード機構・取得自動化~~ | ✅確定（`ADR-0022`・足場/ETL入口）＝**ハイブリッド**（投入=`shp2pgsql`同梱・正規化=SQL/Go・取得=低頻度直リンクscript）。形式変更/複雑な再投影時のみ`ogr2ogr`へ。お作法＝`backend-conventions`§5。**残件＝`shp2pgsql`のimage同梱確認・実ファイルの`.prj`/文字コード確認は実装時** |
 | N03 複製の法務（国土地理院長の承認注記） | 公開検討時。N03原典=国土地理院『数値地図(国土基本情報)』で「複製時に承認が必要」の注記あり。出典表示義務（下記MLIT行）と併せて確認 |
 | ~~API設計方針（REST粒度／タイルとデータの分離）~~ | ✅確定（`ADR-0016`・優先3-1）＝値とジオメトリ分離(継ぎ目)・初手GeoJSON→行き先ベクタタイル(一体型`ST_AsMVT`)。エンドポイント最終粒度は3-2／実装着手時に詰める |
 | 各MLIT APIのIF定義・形式・パラメータの最終確認 | 各エンドポイント実装時（公式マニュアル＋IF定義を必ず確認。憶測でクライアントを書かない）。仕組み: `docs/api-if-spec/` に1API1ファイルで転記（`_TEMPLATE.md` を複製） |
