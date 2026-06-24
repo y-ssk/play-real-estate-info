@@ -106,6 +106,7 @@
 | ベースマップ調達先（優先3-4） | **MVP＝地理院地図(GSI)淡色ラスタ**を自前styleにラスタsourceとして敷き、データ層(ベクタ)を上に重ねる。トークン不要・公式・日本語・ops不要・出典「国土地理院」自動表示(`ADR-0011`)・3857一致(`ADR-0014`)。直アクセス→将来Goプロキシ(`02`§1)へ可逆。**将来＝Protomaps PMTiles自前ホスト(C)へ昇格可**。**B(外部トークンサービス)はトークン不要の価値と衝突で捨てる／D(OSM生直)は不可**。URL/ズーム/利用規約は実装時に公式確認 | `ADR-0019` `02`§7§1 `notes/2026-06-25-basemap` |
 | FE状態管理・データ取得（優先3-3） | **サーバ状態＝TanStack Query**(JSON系values/karte/絞り込みのキャッシュ/再取得/失敗。geometry/タイルは行き先AでMapLibreが取得＝守備範囲外)。**クライアントUI状態＝Zustand**(複数機能で共有・selector部分購読・純ローカルはuseState)。**ピン＝Zustand persist→localStorage**。**選択単位は`{unit_kind, unit_id}`で持つ**(store/Queryキー/将来URL＝メッシュ移行の継ぎ目)。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。Redux/自前fetch不採用。Jotaiは有力対案だがMVPの少数横断状態には過剰(URL本格化/細粒度化で再評価) | `ADR-0018` `02`§7 `notes/2026-06-25-fe-state-management` |
 | HTTPルーティング機構（足場） | **標準 `net/http`（Go 1.22+ ServeMux）**＝メソッド＋パスワイルドカード/`PathValue`でタイル`{z}/{x}/{y}`も標準で捌ける・依存ゼロ＝攻撃面最小（`ADR-0013`軸）・一体型と相性。`chi`は標準互換ゆえ**可逆な差し込み先**（ルート増で手書きが苦しくなったら）・`gin`/`echo`は独自Context型で過剰につき捨てる。Go1.22+は`go.mod`で固定。お作法＝`backend-conventions`§4 | `ADR-0020` `backend-conventions`§4 `02`§6 `notes/2026-06-25-http-routing` |
+| パッケージ管理・Node版（足場） | **pnpm**（Node同梱`corepack`で版固定＝`package.json`の`packageManager`欄）。採用根拠は速さでなく**幽霊依存（宣言してない間接依存をimportできる罠）を構造的に弾く堅牢性**。npmは平坦`node_modules`で幽霊依存を許す/corepackで優位消滅・yarnは却下。**Node版＝`.nvmrc`＋`engines`**（現行LTS・最新LTSは実装時に公式確認）。お作法＝`frontend-conventions`§11 | `ADR-0021` `frontend-conventions`§11 `notes/2026-06-25-package-managers` |
 
 ---
 
@@ -150,7 +151,7 @@
 | ~~FE実装お作法の置き場~~ | ✅確定＝**`docs/frontend-conventions.md` 新設**（生きた文書・視覚はDESIGN/実装は本書）。ディレクトリ/依存・型安全・状態・melta-ui使い方・出典欠損・doc・lint・テスト/カバレッジ・レビュー観点。**配線済**＝CLAUDE.md地図／implementer（FE時にDESIGNと並べて）／reviewer（層2lint＝Biome・層3観点）。backend-conventionsもlint/カバレッジ/doc章を追加 |
 | ~~リンタ/整形ツール（BE・FE）＝Feedback層2「lint」の実体~~ | ✅確定（学習メモ `notes/2026-06-25-lint-formatter-tooling`）＝**FE＝Biome**（lint＋整形＋import整理を単一・攻撃面小・pre-commit速い）／**BE＝golangci-lint＋gofmt/goimports**（docコメント強制もrevive）。決定を`reviewer`層2へ配線（conventions構築時）。decided理由＝type-aware穴の露出が小＋攻撃面（`ADR-0013`軸） |
 | 型依存lint（ESLint＋typescript-eslint）をBiome併用で追加 | **安全弁・トリガー＝await し忘れ/any漏れが実際に刺さった時**。Biomeはtype-awareルールが弱いため。最初から入れない（露出が小・pre-commitが遅くなる）。刺さったら型依存ルールだけ薄く併用（可逆・`notes/2026-06-25-lint-formatter-tooling`） |
-| パッケージ管理・Node版（npm/pnpm/yarn・`.nvmrc`/`engines`） | FE実装着手時（軽い確認）。再現性のため版を固定 |
+| ~~パッケージ管理・Node版（npm/pnpm/yarn・`.nvmrc`/`engines`）~~ | ✅確定（`ADR-0021`・足場）＝**pnpm**（`corepack`で版固定）＋Node`.nvmrc`/`engines`（現行LTS・実装時に最新LTS公式確認）。幽霊依存を弾く堅牢性で採用・npm/yarnは却下。お作法＝`frontend-conventions`§11 |
 | コミット前自動化（pre-commit/lint-staged 等） | 層2をローカルで回す仕組み。lint/test 確定後・CI化前（`docs/04`＝CIは層1/2がローカルで固まってから） |
 | ~~テストカバレッジの方針（BE/FE共通）~~ | ✅確定（深掘り済・学習メモ `notes/2026-06-25-test-coverage`）＝**(a)計測/可視化のみ・当面ゲートなし**（`go test -cover`/Jest`--coverage`）**(b)本丸(層1)の分岐カバレッジを重視・周辺の%は追わない (c)差分カバレッジを主signal**（グローバル%は参考）。reviewer層2に「本丸の変更に分岐テストがあるか」。CIゲート化はCI着手時に再検討。conventions テスト章へ反映予定 |
 | ~~doc/コメントの作法（JSDoc/godoc・WHAT/WHY）~~ | ✅確定（`notes/2026-06-25-doc-comment-style`・backend §3／frontend §6）＝**WHATは書かずWHY**／**公開（エクスポート）シンボルは日本語doc必須・内部は必須にしない**（必要時WHYのみ）／TSは型をdocに重複させない（JSDoc/TSDoc流）・Goはgodoc＝識別子名始まり＋structタグ（`json`/`db`）／複雑処理はWHY＋ADRリンク |
