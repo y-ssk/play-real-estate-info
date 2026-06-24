@@ -145,13 +145,13 @@
 | ~~地図とフロントの状態管理（開閉状態含む）~~ | ✅確定（`ADR-0018`）＝パネル開閉等のUI状態はZustand。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。地図カメラはreact-map-glが保持 |
 | BE共通お作法の章追加（誤り処理・ロギング/可観測性・トランザクション境界・レート制御） | ETL/BE基盤着手時（レート制御・冪等・ロギングはETL要件`docs/02`§4として先行／誤り処理・トランザクション境界はBE実装時）。器は確定＝`docs/backend-conventions.md`§2以降に集約（文書の乱立を防ぐ）。品質観点でいずれ必要 |
 | URL状態（共有リンク化：選択指標・中心/ズーム・選択単位をURLへ） | FE実装/共有要件が出た時。**条件＝識別子は`{unit_kind,unit_id}`で持つ**（裸のコードにしない。メッシュ移行で粒度が変わっても壊れない・`ADR-0015`/`ADR-0018`）。採るならJotaiが対案として浮上（URL同期と相性）＝状態管理の再評価とセット |
-| FE実装お作法の置き場（`frontend-conventions.md`新設 or `DESIGN.md`拡張） | FE実装着手時。BEの`backend-conventions.md`に倣い、決めたら`implementer`/`reviewer`へ配線。当面のFE状態の作法（サーバ/クライアント状態を混ぜない・選択単位は`{unit_kind,unit_id}`）は`ADR-0018`＋学習メモに記載。**foundation（TS✅/lint✅/カバレッジ✅・doc/コメントは検討用保留）が揃った→構築タスクが着手可**＝backend-conventions更新＋frontend-conventions新設＋implementer/reviewer配線を一括（doc/コメント作法もこの場で確定）。穴を抱えたまま規約化しない |
+| ~~FE実装お作法の置き場~~ | ✅確定＝**`docs/frontend-conventions.md` 新設**（生きた文書・視覚はDESIGN/実装は本書）。ディレクトリ/依存・型安全・状態・melta-ui使い方・出典欠損・doc・lint・テスト/カバレッジ・レビュー観点。**配線済**＝CLAUDE.md地図／implementer（FE時にDESIGNと並べて）／reviewer（層2lint＝Biome・層3観点）。backend-conventionsもlint/カバレッジ/doc章を追加 |
 | ~~リンタ/整形ツール（BE・FE）＝Feedback層2「lint」の実体~~ | ✅確定（学習メモ `notes/2026-06-25-lint-formatter-tooling`）＝**FE＝Biome**（lint＋整形＋import整理を単一・攻撃面小・pre-commit速い）／**BE＝golangci-lint＋gofmt/goimports**（docコメント強制もrevive）。決定を`reviewer`層2へ配線（conventions構築時）。decided理由＝type-aware穴の露出が小＋攻撃面（`ADR-0013`軸） |
 | 型依存lint（ESLint＋typescript-eslint）をBiome併用で追加 | **安全弁・トリガー＝await し忘れ/any漏れが実際に刺さった時**。Biomeはtype-awareルールが弱いため。最初から入れない（露出が小・pre-commitが遅くなる）。刺さったら型依存ルールだけ薄く併用（可逆・`notes/2026-06-25-lint-formatter-tooling`） |
 | パッケージ管理・Node版（npm/pnpm/yarn・`.nvmrc`/`engines`） | FE実装着手時（軽い確認）。再現性のため版を固定 |
 | コミット前自動化（pre-commit/lint-staged 等） | 層2をローカルで回す仕組み。lint/test 確定後・CI化前（`docs/04`＝CIは層1/2がローカルで固まってから） |
 | ~~テストカバレッジの方針（BE/FE共通）~~ | ✅確定（深掘り済・学習メモ `notes/2026-06-25-test-coverage`）＝**(a)計測/可視化のみ・当面ゲートなし**（`go test -cover`/Jest`--coverage`）**(b)本丸(層1)の分岐カバレッジを重視・周辺の%は追わない (c)差分カバレッジを主signal**（グローバル%は参考）。reviewer層2に「本丸の変更に分岐テストがあるか」。CIゲート化はCI着手時に再検討。conventions テスト章へ反映予定 |
-| doc/コメントの作法（JSDoc/godoc・WHAT/WHY）＝**検討用に保留** | 他のお作法と同じタイミング（lint確定後のconventions構築時）に確定。**たたき台（合意前の下地）**＝WHATは書かずWHYを書く／公開シンボルは日本語doc注釈（TSはJSDoc/TSDoc流・**型はJSDocに重複させない**／Goはgodoc＝識別子名始まり＋struct タグ`json`/`db`）／複雑処理はWHY＋ADR/学習メモへのリンク。内部関数までdoc必須にするか等は要検討。決めたらbackend/frontend-conventionsへ根拠つきで反映 |
+| ~~doc/コメントの作法（JSDoc/godoc・WHAT/WHY）~~ | ✅確定（`notes/2026-06-25-doc-comment-style`・backend §3／frontend §6）＝**WHATは書かずWHY**／**公開（エクスポート）シンボルは日本語doc必須・内部は必須にしない**（必要時WHYのみ）／TSは型をdocに重複させない（JSDoc/TSDoc流）・Goはgodoc＝識別子名始まり＋structタグ（`json`/`db`）／複雑処理はWHY＋ADRリンク |
 | ~~PostGIS↔Goアクセス方式（クエリ層）~~ | ✅確定（`ADR-0017`・優先3-2）＝pgx＋sqlc既定＋生SQL例外のハイブリッド。お作法は生きた文書`docs/backend-conventions.md`§1。残件（geometry型override・縦持ち動的絞り込みの具体SQL）はBE実装着手時 |
 | N03（行政区域）のロード機構・取得自動化 | ETL実装着手時。①Goの`ingest`に載せる ②`ogr2ogr`/`shp2pgsql`の運用手順 ③ハイブリッド（投入=ogr2ogr・正規化=SQL/Go）。境界は年1回・低頻度で手作業寄りも合理。取得はブラウザDLか直リンクのスクリプト化か。文字コード(CP932→UTF-8)正規化を手順に含める。調達先・後処理の洗い出しは `ADR-0014` |
 | N03 複製の法務（国土地理院長の承認注記） | 公開検討時。N03原典=国土地理院『数値地図(国土基本情報)』で「複製時に承認が必要」の注記あり。出典表示義務（下記MLIT行）と併せて確認 |
