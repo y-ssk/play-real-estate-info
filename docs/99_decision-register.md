@@ -105,6 +105,7 @@
 | FEの言語（型安全） | **TypeScript（strict）**。`ADR-0013` のFE器決定の前提だったが明示記録が漏れていたのを是正（不文律化を防ぐ・監査で発覚）。ADRは立てず必要箇所に記載＝`docs/02`§7＋frontend-conventions（新設予定）の型安全章。`any`既定不使用・APIレスポンス型を`lib/`に明示・識別子は共有型`{unitKind,unitId}` | `02`§7 `ADR-0013`(前提) |
 | ベースマップ調達先（優先3-4） | **MVP＝地理院地図(GSI)淡色ラスタ**を自前styleにラスタsourceとして敷き、データ層(ベクタ)を上に重ねる。トークン不要・公式・日本語・ops不要・出典「国土地理院」自動表示(`ADR-0011`)・3857一致(`ADR-0014`)。直アクセス→将来Goプロキシ(`02`§1)へ可逆。**将来＝Protomaps PMTiles自前ホスト(C)へ昇格可**。**B(外部トークンサービス)はトークン不要の価値と衝突で捨てる／D(OSM生直)は不可**。URL/ズーム/利用規約は実装時に公式確認 | `ADR-0019` `02`§7§1 `notes/2026-06-25-basemap` |
 | FE状態管理・データ取得（優先3-3） | **サーバ状態＝TanStack Query**(JSON系values/karte/絞り込みのキャッシュ/再取得/失敗。geometry/タイルは行き先AでMapLibreが取得＝守備範囲外)。**クライアントUI状態＝Zustand**(複数機能で共有・selector部分購読・純ローカルはuseState)。**ピン＝Zustand persist→localStorage**。**選択単位は`{unit_kind, unit_id}`で持つ**(store/Queryキー/将来URL＝メッシュ移行の継ぎ目)。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。Redux/自前fetch不採用。Jotaiは有力対案だがMVPの少数横断状態には過剰(URL本格化/細粒度化で再評価) | `ADR-0018` `02`§7 `notes/2026-06-25-fe-state-management` |
+| HTTPルーティング機構（足場） | **標準 `net/http`（Go 1.22+ ServeMux）**＝メソッド＋パスワイルドカード/`PathValue`でタイル`{z}/{x}/{y}`も標準で捌ける・依存ゼロ＝攻撃面最小（`ADR-0013`軸）・一体型と相性。`chi`は標準互換ゆえ**可逆な差し込み先**（ルート増で手書きが苦しくなったら）・`gin`/`echo`は独自Context型で過剰につき捨てる。Go1.22+は`go.mod`で固定。お作法＝`backend-conventions`§4 | `ADR-0020` `backend-conventions`§4 `02`§6 `notes/2026-06-25-http-routing` |
 
 ---
 
@@ -144,6 +145,7 @@
 | ~~状態管理・データ取得ライブラリ~~ | ✅確定（`ADR-0018`・優先3-3）＝サーバ状態TanStack Query／クライアント状態Zustand（ピンpersist）。選択単位は`{unit_kind,unit_id}`。Redux/自前fetch不採用・Jotaiは再評価枠 |
 | ~~地図とフロントの状態管理（開閉状態含む）~~ | ✅確定（`ADR-0018`）＝パネル開閉等のUI状態はZustand。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。地図カメラはreact-map-glが保持 |
 | BE共通お作法の章追加（誤り処理・ロギング/可観測性・トランザクション境界・レート制御） | ETL/BE基盤着手時（レート制御・冪等・ロギングはETL要件`docs/02`§4として先行／誤り処理・トランザクション境界はBE実装時）。器は確定＝`docs/backend-conventions.md`§2以降に集約（文書の乱立を防ぐ）。品質観点でいずれ必要 |
+| ~~HTTPルーティング機構/ライブラリ選定~~ | ✅確定（`ADR-0020`・足場）＝**標準 `net/http`（Go 1.22+ ServeMux）**。`chi`は可逆な差し込み先・`gin`/`echo`は過剰で却下。Go1.22+は`go.mod`で固定。お作法＝`backend-conventions`§4。預け漏れ（足場点検で発覚）を登録→即確定 |
 | URL状態（共有リンク化：選択指標・中心/ズーム・選択単位をURLへ） | FE実装/共有要件が出た時。**条件＝識別子は`{unit_kind,unit_id}`で持つ**（裸のコードにしない。メッシュ移行で粒度が変わっても壊れない・`ADR-0015`/`ADR-0018`）。採るならJotaiが対案として浮上（URL同期と相性）＝状態管理の再評価とセット |
 | ~~FE実装お作法の置き場~~ | ✅確定＝**`docs/frontend-conventions.md` 新設**（生きた文書・視覚はDESIGN/実装は本書）。ディレクトリ/依存・型安全・状態・melta-ui使い方・出典欠損・doc・lint・テスト/カバレッジ・レビュー観点。**配線済**＝CLAUDE.md地図／implementer（FE時にDESIGNと並べて）／reviewer（層2lint＝Biome・層3観点）。backend-conventionsもlint/カバレッジ/doc章を追加 |
 | ~~リンタ/整形ツール（BE・FE）＝Feedback層2「lint」の実体~~ | ✅確定（学習メモ `notes/2026-06-25-lint-formatter-tooling`）＝**FE＝Biome**（lint＋整形＋import整理を単一・攻撃面小・pre-commit速い）／**BE＝golangci-lint＋gofmt/goimports**（docコメント強制もrevive）。決定を`reviewer`層2へ配線（conventions構築時）。decided理由＝type-aware穴の露出が小＋攻撃面（`ADR-0013`軸） |
