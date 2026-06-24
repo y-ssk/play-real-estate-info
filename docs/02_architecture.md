@@ -159,9 +159,11 @@ API制約とデータ品質を吸収する仕掛けを最初から組み込む�
 
 **API設計方針（色分け配信・`ADR-0016`で確定）**：**値とジオメトリを別経路に分離（継ぎ目）**＝形 `GET /api/choropleth/geometry`、値 `GET /api/choropleth/values?metric=<key>`（縦持ち`metric_value`を引く）、カルテ `GET /api/karte?unit=<5桁>`。FEは `setFeatureState` で5桁コード結合し色付け（色式は運び方に依らず共通）。**初手＝`ST_AsGeoJSON`＋geojson source**（最初のETL縦スライスはデータ正しさ＝層1を目視できる形で隔離）→ **行き先＝`ST_AsMVT` を本サーバ内ハンドラで＋vector source**（タイルは3857・§9）。タイルは自前`ST_AsMVT`で持ち、`pg_tileserv`/`martin`等の別プロセスは一体型に反するため不採用。
 
+**クエリ層（`ADR-0017`で確定）**：**ハイブリッド**＝接続土台 `pgx`／既定 `sqlc`（静的クエリ多数を型安全に・PostGIS関数も書ける）／生SQLは名前のつく例外のみ（動的WHERE・大量投入`CopyFrom`・sqlc非対応構文）。ORM不採用。**実装/レビューのお作法（既定＋3例外・アンチ/デザインパターン・テスト粒度・レビュー5問・例外台帳）は生きた文書 `docs/backend-conventions.md` §1**（ADRは凍結記録で参照先にしない）。
+
 未確定（実装着手時に決定。`99_decision-register.md`）：
-- **クエリ層**：Goからの DB アクセス方式（生SQL／sqlc／クエリビルダ。空間クエリは生SQL寄り。sqlc 候補・マイグレ生SQLと両立）※マイグレ自体は確定（上記）
 - エンドポイントの最終粒度（クエリ引数・絞り込み条件の渡し方）※配信の形は `ADR-0016` で確定
+- sqlc の geometry 型override（`sqlc.yaml`）・縦持ち`metric_value`での動的絞り込みの具体SQL（`EXISTS`/`HAVING`）※方式は `ADR-0017` で確定
 
 ---
 

@@ -9,6 +9,7 @@ model: inherit
 ## 最初に読む（サブエージェントは CLAUDE.md を継承しないため、自分で読む）
 - `CLAUDE.md` … 進め方・変更管理・本丸/周辺・秘匿の絶対禁止
 - BE/ETL のタスクなら `docs/02_architecture.md`（アーキ・データ仕様・ETL要件）
+  ＋ `docs/backend-conventions.md`（実装のお作法＝クエリ層の既定/例外・命名・引数化・テスト粒度。生きた文書＝最新の取り決め）
 - FE のタスクなら `DESIGN.md`（UI憲法）
 - 必要に応じ `docs/01_project-overview-scope.md`（スコープ）/ `docs/99_decision-register.md`（決定台帳）
 
