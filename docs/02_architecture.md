@@ -157,9 +157,11 @@ API制約とデータ品質を吸収する仕掛けを最初から組み込む�
 
 - **ローカルDB**：PostGIS コンテナ（`postgis/postgis` イメージ・Rancher Desktop）。**マイグレーションは生SQL（golang-migrate）**＝スキーマの権威をSQLに置き `geometry(...,SRID)`・GiST空間索引・拡張を明示制御。ORMの自動マイグレは空間データで不都合のため不採用（`ADR-0013`）。
 
+**API設計方針（色分け配信・`ADR-0016`で確定）**：**値とジオメトリを別経路に分離（継ぎ目）**＝形 `GET /api/choropleth/geometry`、値 `GET /api/choropleth/values?metric=<key>`（縦持ち`metric_value`を引く）、カルテ `GET /api/karte?unit=<5桁>`。FEは `setFeatureState` で5桁コード結合し色付け（色式は運び方に依らず共通）。**初手＝`ST_AsGeoJSON`＋geojson source**（最初のETL縦スライスはデータ正しさ＝層1を目視できる形で隔離）→ **行き先＝`ST_AsMVT` を本サーバ内ハンドラで＋vector source**（タイルは3857・§9）。タイルは自前`ST_AsMVT`で持ち、`pg_tileserv`/`martin`等の別プロセスは一体型に反するため不採用。
+
 未確定（実装着手時に決定。`99_decision-register.md`）：
 - **クエリ層**：Goからの DB アクセス方式（生SQL／sqlc／クエリビルダ。空間クエリは生SQL寄り。sqlc 候補・マイグレ生SQLと両立）※マイグレ自体は確定（上記）
-- API設計方針（REST／エンドポイント粒度、データAPIとタイル配信の分離方法）
+- エンドポイントの最終粒度（クエリ引数・絞り込み条件の渡し方）※配信の形は `ADR-0016` で確定
 
 ---
 
