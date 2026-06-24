@@ -103,6 +103,7 @@
 | 色分けの配信方式（優先3-1） | **値とジオメトリを別経路に分離(継ぎ目)固定**（形＝`/api/choropleth/geometry`、値＝`/api/choropleth/values?metric=`、FEは`setFeatureState`で5桁コード結合・色式は共通）。**初手＝B(`ST_AsGeoJSON`＋geojson source)**＝最初の縦スライスはデータ正しさ(層1)を目視できる形で隔離。**行き先＝A(`ST_AsMVT`を一体型Goハンドラ＋vector source)に固定**＝継ぎ目ゆえ差し替えは形ハンドラ＋FE1行に限定(作り直しではない)。pg_tileserv/martin等の別プロセスは一体型に反するため不採用。素朴な単一GeoJSON/値焼き込みタイルは捨てる | `ADR-0016` `02`§6§7§9 `notes/2026-06-24-vector-tiles-vs-geojson` |
 | クエリ層＝PostGIS↔Goアクセス方式（優先3-2） | **ハイブリッド**＝接続土台`pgx`／既定`sqlc`(静的多数を型安全に)／生SQLは名前のつく例外のみ(動的WHERE・大量投入`CopyFrom`・sqlc非対応構文)。ORM不採用。線引き＝条件が固定sqlc/可変は生SQL。**お作法(芯＋アンチ/デザインパターン＋テスト粒度＋レビュー5問＋例外台帳)は生きた文書 `docs/backend-conventions.md`§1 に置き、ADRは凍結記録で参照先にしない**。運用への配線＝CLAUDE.md地図＋implementer/reviewerの「最初に読む」 | `ADR-0017` `backend-conventions`§1 `02`§6 `notes/2026-06-24-query-layer-approaches` |
 | FEの言語（型安全） | **TypeScript（strict）**。`ADR-0013` のFE器決定の前提だったが明示記録が漏れていたのを是正（不文律化を防ぐ・監査で発覚）。ADRは立てず必要箇所に記載＝`docs/02`§7＋frontend-conventions（新設予定）の型安全章。`any`既定不使用・APIレスポンス型を`lib/`に明示・識別子は共有型`{unitKind,unitId}` | `02`§7 `ADR-0013`(前提) |
+| ベースマップ調達先（優先3-4） | **MVP＝地理院地図(GSI)淡色ラスタ**を自前styleにラスタsourceとして敷き、データ層(ベクタ)を上に重ねる。トークン不要・公式・日本語・ops不要・出典「国土地理院」自動表示(`ADR-0011`)・3857一致(`ADR-0014`)。直アクセス→将来Goプロキシ(`02`§1)へ可逆。**将来＝Protomaps PMTiles自前ホスト(C)へ昇格可**。**B(外部トークンサービス)はトークン不要の価値と衝突で捨てる／D(OSM生直)は不可**。URL/ズーム/利用規約は実装時に公式確認 | `ADR-0019` `02`§7§1 `notes/2026-06-25-basemap` |
 | FE状態管理・データ取得（優先3-3） | **サーバ状態＝TanStack Query**(JSON系values/karte/絞り込みのキャッシュ/再取得/失敗。geometry/タイルは行き先AでMapLibreが取得＝守備範囲外)。**クライアントUI状態＝Zustand**(複数機能で共有・selector部分購読・純ローカルはuseState)。**ピン＝Zustand persist→localStorage**。**選択単位は`{unit_kind, unit_id}`で持つ**(store/Queryキー/将来URL＝メッシュ移行の継ぎ目)。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。Redux/自前fetch不採用。Jotaiは有力対案だがMVPの少数横断状態には過剰(URL本格化/細粒度化で再評価) | `ADR-0018` `02`§7 `notes/2026-06-25-fe-state-management` |
 
 ---
@@ -119,7 +120,7 @@
 | **1** | 価値定義（gap1・重・最優先） | 指標の定義・カルテの中身・「面で比べる」体験。**①指標化の高度（`ADR-0005`）／②各分野の指標：災害(`ADR-0006`)・利便(`ADR-0007`)・相場(`ADR-0008`)・将来(`ADR-0009`)・教育(`ADR-0010`)／③カルテ(`ADR-0011`)／④比較体験(`ADR-0012`)＝すべて確定** | ✅ | — |
 | **2** | 共通結合基盤（gap5・重） | 前半「結合の的」＝境界N03・SRID6668・5桁コード/区粒度(`ADR-0014`)。後半「空間結合の具体形」＝マテリアライズ・縦持ち・重心法(`ADR-0015`)。②コード凡例＝格納方式確定(api-if-spec内・JIT)。**設計は完了、凡例の中身埋めは各レイヤー実装時にJIT** | ✅ | 優先1 |
 | **前倒し(軽)** | 軽い確認バッチ（gap3/gap6＋gap2確認） | 認証なし・地図エンジン=MapLibre・FE器=React+Rsbuild+Jest・一体型追認+機能別ディレクトリ・ローカル=PostGISコンテナ+生SQLマイグレ＝**すべて確定（`ADR-0013`）**。残る FE 詳細(クエリ層/ベースマップ/状態管理)は優先3 | ✅ | — |
-| **3** | 受け渡し仕様＆FE詳細（gap2残） | **3-1 API設計方針＝✅確定(`ADR-0016`)**＝値/形分離・初手GeoJSON→行き先ベクタタイル(一体型ST_AsMVT)。**3-2 クエリ層＝✅確定(`ADR-0017`)**＝pgx＋sqlc既定＋生SQL例外(お作法は生きた文書`backend-conventions.md`§1へ・配線済)。**3-3 状態管理・取得＝✅確定(`ADR-0018`)**＝TanStack Query＋Zustand・選択単位`{unit_kind,unit_id}`。残＝**3-4 ベースマップ調達先のみ** | ♻ | 優先1・地図エンジン確認 |
+| **3** | 受け渡し仕様＆FE詳細（gap2残） | **3-1 API設計方針＝✅確定(`ADR-0016`)**＝値/形分離・初手GeoJSON→行き先ベクタタイル(一体型ST_AsMVT)。**3-2 クエリ層＝✅確定(`ADR-0017`)**＝pgx＋sqlc既定＋生SQL例外(お作法は生きた文書`backend-conventions.md`§1へ・配線済)。**3-3 状態管理・取得＝✅確定(`ADR-0018`)**＝TanStack Query＋Zustand・選択単位`{unit_kind,unit_id}`。**3-4 ベースマップ＝✅確定(`ADR-0019`)**＝MVP地理院淡色→将来Protomaps。**優先3 完了** | ✅ | 優先1・地図エンジン確認 |
 | **4** | デプロイ/ホスティング先（gap4） | 一体型バイナリの実行先・push/公開範囲のタイミング | 🔲♻ | 軽-環境 |
 | **5** | パフォーマンス/データ量（gap7） | 首都圏全域の規模感・タイル枚数・キャッシュ方針 | 🔲 | 優先2 |
 | 実装 | 実装フェーズ（上流確定後） | ETL縦スライス(取得→変換→PostGIS→最小地図描画)・データモデリング詳細・配信実装・テスト方針/ロギング/データ更新運用 | 🔲♻ | 優先1・2・3 |
@@ -139,7 +140,7 @@
 | なぜGoか（採用理由の言語化） | オーナー自身で |
 | ~~フロントの器（React等）の確定~~ | ✅確定（`ADR-0013`）＝React＋Rsbuild＋Jest。クエリ層/状態管理は別行で保留継続 |
 | ~~地図エンジン（MapLibre想定）の確定~~ | ✅確定（`ADR-0013`）＝MapLibre GL JS |
-| ベースマップ（地図下地）の調達先 | 実装着手時 |
+| ~~ベースマップ（地図下地）の調達先~~ | ✅確定（`ADR-0019`・優先3-4）＝MVP地理院淡色(GSI)ラスタを自前styleに／将来Protomaps自前ホスト。URL・最大ズーム・利用規約(大量/継続/プロキシ可否)は実装着手時に公式確認 |
 | ~~状態管理・データ取得ライブラリ~~ | ✅確定（`ADR-0018`・優先3-3）＝サーバ状態TanStack Query／クライアント状態Zustand（ピンpersist）。選択単位は`{unit_kind,unit_id}`。Redux/自前fetch不採用・Jotaiは再評価枠 |
 | ~~地図とフロントの状態管理（開閉状態含む）~~ | ✅確定（`ADR-0018`）＝パネル開閉等のUI状態はZustand。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。地図カメラはreact-map-glが保持 |
 | BE共通お作法の章追加（誤り処理・ロギング/可観測性・トランザクション境界・レート制御） | ETL/BE基盤着手時（レート制御・冪等・ロギングはETL要件`docs/02`§4として先行／誤り処理・トランザクション境界はBE実装時）。器は確定＝`docs/backend-conventions.md`§2以降に集約（文書の乱立を防ぐ）。品質観点でいずれ必要 |
