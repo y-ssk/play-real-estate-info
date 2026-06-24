@@ -176,10 +176,10 @@ API制約とデータ品質を吸収する仕掛けを最初から組み込む�
 - **地図UI**：③開閉式パネル（PC）。閉＝地図没入／開＝固定領域で読み込み。モバイルはボトムシート展開（PC実装後）。詳細は `DESIGN.md`。
 - **PC/モバイル両対応**が前提。
 
+**状態管理・データ取得（`ADR-0018`で確定）**：**サーバ状態＝TanStack Query**（JSON系 values/karte/絞り込みのキャッシュ/再取得/失敗。geometry/タイルは行き先AでMapLibreが自前取得＝守備範囲外）。**クライアントUI状態＝Zustand**（複数機能で共有・selectorで部分購読・純ローカルは`useState`）。**ピン留め＝Zustand `persist`→localStorage**。**選択中の単位は`{unit_kind, unit_id}`で持つ**（store/Queryキー/将来URL＝メッシュ移行の継ぎ目）。状態の真実はZustand、MapLibre`setFeatureState`は描画の鏡。地図カメラは`react-map-gl`が保持。Redux/自前fetchは不採用。
+
 未確定（実装着手時に決定）：
 - ベースマップ（地図下地タイル）の調達先（自前／外部）※MLITとは別の依存
-- 状態管理・データ取得ライブラリ
-- 地図とフロントの状態管理の統合（開閉状態を含む）
 
 ---
 
