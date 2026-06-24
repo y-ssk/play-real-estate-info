@@ -102,6 +102,7 @@
 | コード凡例の格納方式（優先2-②） | **各 `docs/api-if-spec/<ID>.md` の「4.5 コード定義」章に持つ**（専用ディレクトリ/PostGIS直は捨てる）。原典貼付=オーナー・構造化=AI・**憶測禁止**。スコープはMVPで色分け/重ねに使う中核から（用途地域XKT002・区域区分XKT001・液状化XKT025・防災コア・地価用途区分XPT002）。**収集自体はレイヤー実装着手時にJIT**で可 | `02`§3 `ADR-0002` `api-if-spec/_TEMPLATE` |
 | 色分けの配信方式（優先3-1） | **値とジオメトリを別経路に分離(継ぎ目)固定**（形＝`/api/choropleth/geometry`、値＝`/api/choropleth/values?metric=`、FEは`setFeatureState`で5桁コード結合・色式は共通）。**初手＝B(`ST_AsGeoJSON`＋geojson source)**＝最初の縦スライスはデータ正しさ(層1)を目視できる形で隔離。**行き先＝A(`ST_AsMVT`を一体型Goハンドラ＋vector source)に固定**＝継ぎ目ゆえ差し替えは形ハンドラ＋FE1行に限定(作り直しではない)。pg_tileserv/martin等の別プロセスは一体型に反するため不採用。素朴な単一GeoJSON/値焼き込みタイルは捨てる | `ADR-0016` `02`§6§7§9 `notes/2026-06-24-vector-tiles-vs-geojson` |
 | クエリ層＝PostGIS↔Goアクセス方式（優先3-2） | **ハイブリッド**＝接続土台`pgx`／既定`sqlc`(静的多数を型安全に)／生SQLは名前のつく例外のみ(動的WHERE・大量投入`CopyFrom`・sqlc非対応構文)。ORM不採用。線引き＝条件が固定sqlc/可変は生SQL。**お作法(芯＋アンチ/デザインパターン＋テスト粒度＋レビュー5問＋例外台帳)は生きた文書 `docs/backend-conventions.md`§1 に置き、ADRは凍結記録で参照先にしない**。運用への配線＝CLAUDE.md地図＋implementer/reviewerの「最初に読む」 | `ADR-0017` `backend-conventions`§1 `02`§6 `notes/2026-06-24-query-layer-approaches` |
+| FEの言語（型安全） | **TypeScript（strict）**。`ADR-0013` のFE器決定の前提だったが明示記録が漏れていたのを是正（不文律化を防ぐ・監査で発覚）。ADRは立てず必要箇所に記載＝`docs/02`§7＋frontend-conventions（新設予定）の型安全章。`any`既定不使用・APIレスポンス型を`lib/`に明示・識別子は共有型`{unitKind,unitId}` | `02`§7 `ADR-0013`(前提) |
 | FE状態管理・データ取得（優先3-3） | **サーバ状態＝TanStack Query**(JSON系values/karte/絞り込みのキャッシュ/再取得/失敗。geometry/タイルは行き先AでMapLibreが取得＝守備範囲外)。**クライアントUI状態＝Zustand**(複数機能で共有・selector部分購読・純ローカルはuseState)。**ピン＝Zustand persist→localStorage**。**選択単位は`{unit_kind, unit_id}`で持つ**(store/Queryキー/将来URL＝メッシュ移行の継ぎ目)。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。Redux/自前fetch不採用。Jotaiは有力対案だがMVPの少数横断状態には過剰(URL本格化/細粒度化で再評価) | `ADR-0018` `02`§7 `notes/2026-06-25-fe-state-management` |
 
 ---
@@ -143,7 +144,11 @@
 | ~~地図とフロントの状態管理（開閉状態含む）~~ | ✅確定（`ADR-0018`）＝パネル開閉等のUI状態はZustand。状態の真実はZustand・MapLibre`setFeatureState`は描画の鏡。地図カメラはreact-map-glが保持 |
 | BE共通お作法の章追加（誤り処理・ロギング/可観測性・トランザクション境界・レート制御） | ETL/BE基盤着手時（レート制御・冪等・ロギングはETL要件`docs/02`§4として先行／誤り処理・トランザクション境界はBE実装時）。器は確定＝`docs/backend-conventions.md`§2以降に集約（文書の乱立を防ぐ）。品質観点でいずれ必要 |
 | URL状態（共有リンク化：選択指標・中心/ズーム・選択単位をURLへ） | FE実装/共有要件が出た時。**条件＝識別子は`{unit_kind,unit_id}`で持つ**（裸のコードにしない。メッシュ移行で粒度が変わっても壊れない・`ADR-0015`/`ADR-0018`）。採るならJotaiが対案として浮上（URL同期と相性）＝状態管理の再評価とセット |
-| FE実装お作法の置き場（`frontend-conventions.md`新設 or `DESIGN.md`拡張） | FE実装着手時。BEの`backend-conventions.md`に倣い、決めたら`implementer`/`reviewer`へ配線。当面のFE状態の作法（サーバ/クライアント状態を混ぜない・選択単位は`{unit_kind,unit_id}`）は`ADR-0018`＋学習メモに記載 |
+| FE実装お作法の置き場（`frontend-conventions.md`新設 or `DESIGN.md`拡張） | FE実装着手時。BEの`backend-conventions.md`に倣い、決めたら`implementer`/`reviewer`へ配線。当面のFE状態の作法（サーバ/クライアント状態を混ぜない・選択単位は`{unit_kind,unit_id}`）は`ADR-0018`＋学習メモに記載。**foundation（lint・カバレッジ）確定後に着手**（穴を抱えたまま規約化しない） |
+| リンタ/整形ツール（BE・FE）＝Feedback層2「lint」の実体 | **監査で発覚した穴**：層2・コミットチェックリスト・reviewerに「lint」とあるが実行ツールが未決定。**FE**＝ESLint+Prettier or Biome（単一ツール志向）／**BE**＝golangci-lint＋gofmt 等。実装/CI着手前に決定し`reviewer`へ配線。決まるまでreviewerの「lint」は空回り |
+| パッケージ管理・Node版（npm/pnpm/yarn・`.nvmrc`/`engines`） | FE実装着手時（軽い確認）。再現性のため版を固定 |
+| コミット前自動化（pre-commit/lint-staged 等） | 層2をローカルで回す仕組み。lint/test 確定後・CI化前（`docs/04`＝CIは層1/2がローカルで固まってから） |
+| テストカバレッジの方針（BE/FE共通） | **学習案件＝深掘りが要る**（そもそも何か／何のため／どの観点で何を取り入れるか）。粗い一律%ゲートで決めない（`docs/01`「網羅でなく仕組みが動くこと」）。深掘り壁打ち→学習メモ→backend/frontend-conventionsへ。CIゲート化は別途CI着手時 |
 | ~~PostGIS↔Goアクセス方式（クエリ層）~~ | ✅確定（`ADR-0017`・優先3-2）＝pgx＋sqlc既定＋生SQL例外のハイブリッド。お作法は生きた文書`docs/backend-conventions.md`§1。残件（geometry型override・縦持ち動的絞り込みの具体SQL）はBE実装着手時 |
 | N03（行政区域）のロード機構・取得自動化 | ETL実装着手時。①Goの`ingest`に載せる ②`ogr2ogr`/`shp2pgsql`の運用手順 ③ハイブリッド（投入=ogr2ogr・正規化=SQL/Go）。境界は年1回・低頻度で手作業寄りも合理。取得はブラウザDLか直リンクのスクリプト化か。文字コード(CP932→UTF-8)正規化を手順に含める。調達先・後処理の洗い出しは `ADR-0014` |
 | N03 複製の法務（国土地理院長の承認注記） | 公開検討時。N03原典=国土地理院『数値地図(国土基本情報)』で「複製時に承認が必要」の注記あり。出典表示義務（下記MLIT行）と併せて確認 |
