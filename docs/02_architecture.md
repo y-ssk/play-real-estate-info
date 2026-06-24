@@ -170,7 +170,7 @@ API制約とデータ品質を吸収する仕掛けを最初から組み込む�
 ## 7. フロント構成
 
 - **スタイル土台**：Tailwind ＋ melta-ui（MIT）の設計仕様書を取り込んだデザインシステム。UI規約は `DESIGN.md`。melta-uiは器非依存なので、フロント器の確定を待たずに取り込み・運用できる。
-- **器・ビルド・テスト（`ADR-0013`）**：器＝**React**／ビルド＝**Rsbuild（Rspack）**／テスト＝**Jest＋React Testing Library**（E2EはPlaywright・MVP後）。Vitestは攻撃面回避で不採用、Vite系譜から距離を置く。ビルドツールは**可逆な決定**（後で乗換可）。
+- **器・言語・ビルド・テスト（`ADR-0013`）**：器＝**React**／言語＝**TypeScript（strict）**／ビルド＝**Rsbuild（Rspack）**／テスト＝**Jest＋React Testing Library**（E2EはPlaywright・MVP後）。Vitestは攻撃面回避で不採用、Vite系譜から距離を置く。ビルドツールは**可逆な決定**（後で乗換可）。TypeScript は ADR-0013 の前提だったが明示記録が漏れていたため本書で確定（`docs/99` 索引・型安全のお作法は frontend-conventions 予定）。
 - **地図エンジン（`ADR-0013`）**：**MapLibre GL JS**（`react-map-gl/maplibre`）。データ駆動スタイルで分野切替、ベクタタイルでメッシュ移行に強い、トークン不要＝透明性。
 - **ディレクトリ構成（機能単位 / feature-based・`ADR-0013`）**：`web/src/` = `app/`（起動・プロバイダ・全体レイアウト）／`features/`（map・filters・karte・comparison・pins）／`components/`（melta-ui取り込み層）／`lib/`（APIクライアント・地図初期化・共通型・出典/欠損）／`styles/`（tokens）／`test/`。思想は学習メモ `docs/notes/2026-06-24-fe-architecture-feature-based.md`。
 - **地図UI**：③開閉式パネル（PC）。閉＝地図没入／開＝固定領域で読み込み。モバイルはボトムシート展開（PC実装後）。詳細は `DESIGN.md`。
