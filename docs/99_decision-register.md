@@ -148,7 +148,8 @@
 | リンタ/整形ツール（BE・FE）＝Feedback層2「lint」の実体 | **監査で発覚した穴**：層2・コミットチェックリスト・reviewerに「lint」とあるが実行ツールが未決定。**FE**＝ESLint+Prettier or Biome（単一ツール志向）／**BE**＝golangci-lint＋gofmt 等。実装/CI着手前に決定し`reviewer`へ配線。決まるまでreviewerの「lint」は空回り |
 | パッケージ管理・Node版（npm/pnpm/yarn・`.nvmrc`/`engines`） | FE実装着手時（軽い確認）。再現性のため版を固定 |
 | コミット前自動化（pre-commit/lint-staged 等） | 層2をローカルで回す仕組み。lint/test 確定後・CI化前（`docs/04`＝CIは層1/2がローカルで固まってから） |
-| テストカバレッジの方針（BE/FE共通） | **学習案件＝深掘りが要る**（そもそも何か／何のため／どの観点で何を取り入れるか）。粗い一律%ゲートで決めない（`docs/01`「網羅でなく仕組みが動くこと」）。深掘り壁打ち→学習メモ→backend/frontend-conventionsへ。CIゲート化は別途CI着手時 |
+| ~~テストカバレッジの方針（BE/FE共通）~~ | ✅確定（深掘り済・学習メモ `notes/2026-06-25-test-coverage`）＝**(a)計測/可視化のみ・当面ゲートなし**（`go test -cover`/Jest`--coverage`）**(b)本丸(層1)の分岐カバレッジを重視・周辺の%は追わない (c)差分カバレッジを主signal**（グローバル%は参考）。reviewer層2に「本丸の変更に分岐テストがあるか」。CIゲート化はCI着手時に再検討。conventions テスト章へ反映予定 |
+| doc/コメントの作法（JSDoc/godoc・WHAT/WHY）＝**検討用に保留** | 他のお作法と同じタイミング（lint確定後のconventions構築時）に確定。**たたき台（合意前の下地）**＝WHATは書かずWHYを書く／公開シンボルは日本語doc注釈（TSはJSDoc/TSDoc流・**型はJSDocに重複させない**／Goはgodoc＝識別子名始まり＋struct タグ`json`/`db`）／複雑処理はWHY＋ADR/学習メモへのリンク。内部関数までdoc必須にするか等は要検討。決めたらbackend/frontend-conventionsへ根拠つきで反映 |
 | ~~PostGIS↔Goアクセス方式（クエリ層）~~ | ✅確定（`ADR-0017`・優先3-2）＝pgx＋sqlc既定＋生SQL例外のハイブリッド。お作法は生きた文書`docs/backend-conventions.md`§1。残件（geometry型override・縦持ち動的絞り込みの具体SQL）はBE実装着手時 |
 | N03（行政区域）のロード機構・取得自動化 | ETL実装着手時。①Goの`ingest`に載せる ②`ogr2ogr`/`shp2pgsql`の運用手順 ③ハイブリッド（投入=ogr2ogr・正規化=SQL/Go）。境界は年1回・低頻度で手作業寄りも合理。取得はブラウザDLか直リンクのスクリプト化か。文字コード(CP932→UTF-8)正規化を手順に含める。調達先・後処理の洗い出しは `ADR-0014` |
 | N03 複製の法務（国土地理院長の承認注記） | 公開検討時。N03原典=国土地理院『数値地図(国土基本情報)』で「複製時に承認が必要」の注記あり。出典表示義務（下記MLIT行）と併せて確認 |
