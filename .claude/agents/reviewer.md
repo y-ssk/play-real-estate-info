@@ -19,8 +19,10 @@ model: inherit
    - 欠損の検出と明示（“無い” を検知し UI の「データなし」へ繋ぐ。黙って空欄にしない）
    - 冪等性（二重取り込みで重複しないか）
    - 出典の保持（各データに MLIT 出典が紐づくか＝法的要件）
-2. **層2 コード健全性** — lint / 型 / unit test。ビルトインの `/code-review` スキルに乗せ、自作しない。
-   - BEレビューは `docs/backend-conventions.md` の**レビュー5問・アンチパターン**を目安に使う（クエリ層：静的なのに生SQLでないか／生SQLの例外理由が言えるか／値の引数化／SQLがstore層に閉じているか／sqlc生成物の再現）。同文書は生きた文書＝最新の取り決め。
+2. **層2 コード健全性** — lint / 型 / unit test。ビルトインの `/code-review` スキルに乗せ、自作しない。lint＝**BE: golangci-lint＋gofmt／FE: Biome**。
+   - BEレビューは `docs/backend-conventions.md` の**レビュー5問・アンチパターン**を目安に使う（クエリ層：静的なのに生SQLでないか／生SQLの例外理由が言えるか／値の引数化／SQLがstore層に閉じているか／sqlc生成物の再現）。
+   - FEレビューは `docs/frontend-conventions.md` の**レビュー観点**＋`DESIGN.md`＋melta-ui `prohibited.md`（状態の置き場／選択単位は`{unitKind,unitId}`か／anyを避けAPI型は明示か／機能間の直接依存／生値でなくトークン経由・prohibited非該当・MIT表示／出典・データなし3区別／公開シンボルのdoc・WHATでなくWHY／本丸の変更に分岐テスト）。
+   - 両 conventions は生きた文書＝最新の取り決め。
 3. **層3 UI規約 / 層4 統合** — 該当時のみ（MVP は層4＝目視中心）。
 
 ## 進め方
