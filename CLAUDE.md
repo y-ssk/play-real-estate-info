@@ -36,6 +36,7 @@
 ## ドキュメント地図（必要時に読む／`@import` はしない＝常時ロードを避ける）
 - `docs/01_project-overview-scope.md` … プロダクト概要・スコープ（やる/やらない/保留）
 - `docs/02_architecture.md` … アーキテクチャ・データ仕様（MLIT振り分け・ETL要件）
+- `docs/backend-conventions.md` … BE実装/レビューのお作法（生きた文書）。クエリ層のお作法・アンチ/デザインパターン・レビュー観点。**BE/ETL実装時・レビュー時に参照**（ADRは凍結の根拠・最新取り決めは本書）
 - `DESIGN.md` … UI憲法（melta-ui取り込み＋固有差分）。FE役が最初に読む
 - `docs/04_harness.md` … AI駆動の進め方（役割・Feedback4層）
 - `docs/99_decision-register.md` … 決め事の台帳（確定の索引・保留のトリガー）
