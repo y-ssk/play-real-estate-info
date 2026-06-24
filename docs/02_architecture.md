@@ -178,8 +178,7 @@ API制約とデータ品質を吸収する仕掛けを最初から組み込む�
 
 **状態管理・データ取得（`ADR-0018`で確定）**：**サーバ状態＝TanStack Query**（JSON系 values/karte/絞り込みのキャッシュ/再取得/失敗。geometry/タイルは行き先AでMapLibreが自前取得＝守備範囲外）。**クライアントUI状態＝Zustand**（複数機能で共有・selectorで部分購読・純ローカルは`useState`）。**ピン留め＝Zustand `persist`→localStorage**。**選択中の単位は`{unit_kind, unit_id}`で持つ**（store/Queryキー/将来URL＝メッシュ移行の継ぎ目）。状態の真実はZustand、MapLibre`setFeatureState`は描画の鏡。地図カメラは`react-map-gl`が保持。Redux/自前fetchは不採用。
 
-未確定（実装着手時に決定）：
-- ベースマップ（地図下地タイル）の調達先（自前／外部）※MLITとは別の依存
+**ベースマップ（地図下地・`ADR-0019`で確定）**：**MVP＝地理院地図(GSI)の淡色地図ラスタタイル**を自前 style にラスタ source として敷き、データ層（ベクタ）を上に重ねる。トークン不要・公式・日本語・出典「国土地理院」自動表示（`ADR-0011`）・3857一致（`ADR-0014`）。MVPは直アクセス→将来 Go プロキシ/キャッシュ（§1）へ可逆。**将来＝Protomaps PMTiles 自前ホストへ昇格可**。外部トークンサービス（MapTiler等）はトークン不要の方針と衝突で不採用。URL・最大ズーム・利用規約は実装着手時に公式確認。
 
 ---
 
