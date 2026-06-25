@@ -65,29 +65,26 @@ DB のユーザー/パスワード/DB 名/公開ポートは **リポジトリ�
 
 #### 設定（初回）
 
-```bash
-# 1. env ファイルを作成（リポジトリ外・パーミッション 600）
-mkdir -p ~/.config/machilens && touch ~/.config/machilens/db.env && chmod 600 ~/.config/machilens/db.env
+`POSTGRES_*` は **`MLIT_API_KEY` と同じ `~/.config/config.env` に追記**する（このファイルは下記「秘匿情報」で作成済み・`~/.bashrc` から source 済み＝**追加の source 行は不要**。秘匿と env を1ファイルに集約する）。
 
-# 2. 普通のターミナルでエディタを開き、実値を記入する（お好みのエディタで）
-nano ~/.config/machilens/db.env   # 例: vim / code でも可
-#    記入内容（export 付き＝source で環境変数になる）:
+```bash
+# 1. config.env をエディタで開く（無ければ下記「秘匿情報」の手順で先に作成）
+nano ~/.config/config.env   # 例: vim / code でも可
+#    追記内容（export 付き＝source で環境変数になる）:
 #      export POSTGRES_USER="machilens"
 #      export POSTGRES_PASSWORD="<任意のローカル用パスワード>"
 #      export POSTGRES_DB="machilens"
 #      export POSTGRES_PORT="5432"        # 既定でよければ省略可
 
-# 3. シェル起動時に読み込む（~/.bashrc に1行だけ追加）
-grep -q 'machilens/db.env' ~/.bashrc || echo 'source ~/.config/machilens/db.env' >> ~/.bashrc
-source ~/.bashrc
+# 2. 再読込（新しいシェルを開いてもよい）
+source ~/.config/config.env
 
-# 4. 確認（値は表示せず、セット済みか否かだけ）
+# 3. 確認（値は表示せず、セット済みか否かだけ）
 [ -n "$POSTGRES_PASSWORD" ] && echo "DB env: set" || echo "DB env: NOT set"
 ```
 
 > 値の記入・更新は**エディタで**行う（`echo` で書くとパスワードが `~/.bash_history` に残るため）。
-> `MLIT_API_KEY` を `~/.config/config.env` に置く運用（下記「秘匿情報」）と同じ要領。両方を同じ env ファイルに
-> まとめても、別ファイルにしてもよい（どちらも `~/.bashrc` から source されていれば届く）。
+> `config.env` は API キーと同じファイル。`~/.bashrc` から既に source されるので、DB 用に別ファイルや別の source 行は作らない。
 
 ## セッション再開（運用ルール）
 
