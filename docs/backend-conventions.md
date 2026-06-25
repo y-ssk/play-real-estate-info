@@ -97,24 +97,35 @@
 
 - **投入と正規化を分ける（継ぎ目）**：シェープ→PostGISテーブル化（機械的）＝外部ツール／5桁コード化・年度固定・値域チェック（本丸の結合基盤）＝**SQL・Go**。正規化は投入ツールに埋めない（ツールを替えても不変・`ADR-0015`）。投入ツール選び・置き場所が影響するのは投入工程だけで、正規化以降には波及しない。
 - **ローダの置き場所＝使い捨ての別コンテナ**（`ADR-0023`）。投入時だけ GDAL 公式イメージ `ghcr.io/osgeo/gdal` から `docker run --rm` で起動し、compose と同一ネットワーク越しに DB へ流し込み、終了後に破棄する。**DB イメージ（`postgis/postgis`）は公式のまま改変しない**（攻撃面最小・再現性・役割分離）。DB イメージに同居（カスタム build）・端末直インストールは捨てた（`ADR-0023`）。
-- **ローダ＝`ogr2ogr`（GDAL）**。GDAL 公式イメージに同梱で入手・保守が素直。N03 はシェープゆえ機能十分。例（フラグは実ファイル確認後に確定）：
+- **ローダ＝`ogr2ogr`（GDAL）**。GDAL 公式イメージに同梱で入手・保守が素直。N03 はシェープゆえ機能十分。
+  **入力は GeoJSON**（N03 同梱の `.geojson`＝UTF-8・`EPSG:6668` 自己宣言ゆえ文字コード指定が不要・`.shp` の CP932 / `.prj` の Esri WKT 名を避けられる）。実装で確定した形（`scripts/ingest-n03.sh`）：
   ```bash
-  docker run --rm -v ./data/n03:/data --network <composeのDBネットワーク> \
+  docker run --rm --network=host \
+    -e PGPASSWORD="$POSTGRES_PASSWORD" \
+    -v "<data/n03/{YEAR}/{PREF}>:/data:ro" \
     ghcr.io/osgeo/gdal \
-    ogr2ogr -f PostgreSQL "PG:host=db dbname=... user=..." /data/N03.shp \
-      -nln n03_raw -t_srs EPSG:6668 -lco GEOMETRY_NAME=geom -lco SPATIAL_INDEX=GIST
+    ogr2ogr -f PostgreSQL \
+      "PG:host=localhost port=${POSTGRES_PORT} dbname=${POSTGRES_DB} user=${POSTGRES_USER}" \
+      "/data/<N03...>.geojson" \
+      -nln n03_raw -overwrite -a_srs EPSG:6668 \
+      -lco GEOMETRY_NAME=geom -lco SPATIAL_INDEX=GIST
   ```
-  文字コードは `.dbf` 確認後に `--config SHAPE_ENCODING <CP932 等>` を付す。`shp2pgsql` は専用イメージが乏しく自作の手間ゆえ採らない（`ADR-0023`。将来固有の事情が出れば継ぎ目で可逆）。
+  パスワードは `-e PGPASSWORD` でコンテナ環境変数に渡し**接続文字列に埋めない**（端末/`ps`/履歴に出さない）。`-a_srs EPSG:6668` は自己宣言済みの座標系を確定する目的（再投影 `-t_srs` ではない・座標値はそのまま）。`-overwrite` で冪等。入力が `.shp`（CP932）に戻る場合のみ `--config SHAPE_ENCODING CP932` を付す。`shp2pgsql` は専用イメージが乏しく自作の手間ゆえ採らない（`ADR-0023`。将来固有の事情が出れば継ぎ目で可逆）。
 - **取得＝低頻度（年1回）**：直リンクの取得スクリプト（年度・都県をパラメータ）で半自動。完全自動化しない。
 - **実装時に実物で確認**（憶測しない）：GDAL 公式イメージの `ogr2ogr` 同梱（`docker run --rm ghcr.io/osgeo/gdal ogr2ogr --version`）・`.prj` の座標系（→6668 変換要否）・`.dbf` の文字コード。**東京都(13)・令和5年版で確認済**＝座標系 `GCS_JGD_2011`＝EPSG:6668（保存目標と一致・再投影不要／.prj は Esri WKT名ゆえ `-a_srs EPSG:6668` で付与）・文字コード CP932・`N03_007` は5桁文字列・同梱の `.geojson` は UTF-8 で EPSG:6668 を自己宣言（入力候補）。
 
 ### §5.1 運用形態（`ADR-0024`）
 - **実行手段＝薄いscript＋Makefile入口**：`scripts/ingest-n03.sh`（GDAL公式イメージを `docker run --rm --network=host` で呼ぶ薄いラッパ）／入口 `make ingest-n03`（`make migrate` と同じ流儀＝env駆動・`@`echo抑制・`source ~/.config/config.env`）。取得は対の `scripts/fetch-n03.sh`。**手打ち `docker run` は禁止**（再現性ゼロ）。
 - **正規化＝Go（`cmd/ingest`）に持つ**（本丸・層1検証対象。`ADR-0017`）。`n03_raw`（生・無加工）→ `admin_unit`（5桁集約・年度固定・値域）。psql で SQL を流す案は層1をテストで守れず却下。
+  - 実装＝`internal/ingest`（正規化本体）＋`cmd/ingest`（`-year`/`-pref` フラグの入口）。接続は `POSTGRES_*` 環境変数から DSN を組む（§1・compose/Makefile と同一変数。パスワードは DSN/ログに出さない）。
+  - **正規化SQLは生SQL（pgx 直）＝§1 例外3**：対象 `n03_raw` は `ogr2ogr` が動的に作る一時テーブル（属性そのまま・大文字列名 `N03_007`/`N03_004`）でスキーマ管理外ゆえ sqlc が扱えない（理由を `internal/ingest` のパッケージ doc に明記）。形は固定（`N03_007` で `GROUP BY`・`ST_Multi(ST_Union(geom))`）。値は必ず引数化（pref＝`$1`）。
+  - 表示名(name)＝`N03_004`（千代田区 等）をそのまま（政令市の区の組み立ては9都県化で対応＝今回対象外・`ADR-0024`）。
+  - **実行後アサート（層1）**：投入件数>0／全 code が5桁／全 geom が `ST_IsValid`／サンプル名（13101=千代田区・在れば）が日本語で文字化けしていないこと。失敗はロールバックし文脈付きで返す。
+  - **件数の妥当性（東京都=69）**：元 GeoJSON 6177 ポリゴンを `N03_007`(5桁) で束ね 69 行（23特別区＋26市＋町村＋島嶼＋`13805`/`13807`/`13808` 等の行政界コードを含む）。検証クエリは `docs/runbooks/n03-ingest.md` §3。
 - **データ配置規約＝`data/n03/{YEAR}/{PREF}/`**：`fetch-n03.sh` がここに展開、`ingest-n03.sh` はここから読む（path は YEAR/PREF で一意）。`temp/` は使わない（配置を一本化＝再現性）。`data/` は `.gitignore`。
 - **冪等性**（ETL要件）：`n03_raw` は投入前に `DROP`/`TRUNCATE`、`admin_unit` は**都県単位**（コード上2桁=PREF）で `DELETE`→`INSERT`。何度流しても同結果。
 - **死守**：AIは `config.env` 不可触（触るのは script ファイルのみ）・**起動はオーナーの対話シェル**・パスワードは `PGPASSWORD` 経由（接続文字列に埋めない）＋echo抑制で端末/`ps`/履歴に出さない。
-- **手順書＝`docs/runbooks/n03-ingest.md`**（運用手順 runbook・実装時に作成）。README はローカルセットアップに導線1行。
+- **手順書＝`docs/runbooks/n03-ingest.md`**（運用手順 runbook・作成済み：前提→取得→投入＋正規化→検証→冪等→つまずき）。README はローカルセットアップに導線1行。入口＝`make fetch-n03` / `make ingest-n03`（対象は `N03_YEAR`/`N03_PREF` で上書き・既定 2023/13）。
 - 詳細解説＝`docs/notes/2026-06-25-n03-ingest.md`（投入工程・シェープ・SRID）／`docs/notes/2026-06-25-n03-ingest-path.md`（登場人物・流れ・ローダの置き場所）。
 
 ## §6 以降（今後追記）

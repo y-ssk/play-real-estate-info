@@ -25,3 +25,10 @@
 - お作法（取り決め）＝`backend-conventions` §5 に配置規約・冪等・実行手段・runbook導線を反映（生きた文書）。`CLAUDE.md` ドキュメント地図に `docs/runbooks/` を配線。
 - **死守事項**（`CLAUDE.md` ハードルール）：AIは `config.env` を読まない/開かない（私が触るのは script ファイルだけ）・**起動はオーナーの対話シェル**・パスワードは `PGPASSWORD` 経由で渡し接続文字列に埋めない＋echo抑制（端末/`ps`/履歴に出さない）。
 - **可逆**：実行手段（script/Make）と compose 格上げは継ぎ目の外＝運用層で差し替え可。正規化（本丸）に波及しない。
+
+## 追記（2026-06-25・実装で確定した値）
+> 凍結記録に実装の事実を1点記す。最新の取り決め（コマンド形・フラグ）は生きた文書 `backend-conventions` §5/§5.1 と手順書 `docs/runbooks/n03-ingest.md` を引く。
+- 取得＝`scripts/fetch-n03.sh`／投入＝`scripts/ingest-n03.sh`／正規化＝`cmd/ingest`＋`internal/ingest`／入口＝`make fetch-n03`・`make ingest-n03`（対象は `N03_YEAR`/`N03_PREF`・既定 2023/13）。
+- 投入＝**GeoJSON 入力**（UTF-8・`EPSG:6668` 自己宣言）を `ogr2ogr -nln n03_raw -overwrite -a_srs EPSG:6668 -lco GEOMETRY_NAME=geom`。パスワードは `-e PGPASSWORD`（接続文字列に埋めない）。
+- 取得 URL（実在確認済）＝`https://nlftp.mlit.go.jp/ksj/gml/data/N03/N03-{YEAR}/N03-{YEAR}0101_{PREF}_GML.zip`。
+- 層1の件数妥当性＝東京都(13)は **69 行**（6177 ポリゴンを 5桁コードで束ねた数）。
