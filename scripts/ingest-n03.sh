@@ -76,4 +76,10 @@ docker run --rm --network=host \
     -lco GEOMETRY_NAME=geom \
     -lco SPATIAL_INDEX=GIST
 
-echo "ingest-n03: n03_raw への投入完了。次に正規化（go run ./cmd/ingest -year=${YEAR} -pref=${PREF}）"
+echo "ingest-n03: n03_raw への投入完了。続けて正規化（admin_unit）を実行する。"
+
+# 正規化（本丸）＝Go。config.env はこのスクリプト冒頭で source 済みゆえ go も POSTGRES_* を継承する
+# （どのシェルから呼んでも同じに動く＝対話/非対話/CI を問わず env が揃う）。実行は repo ルートから。
+( cd "$REPO_ROOT" && go run ./cmd/ingest -year="$YEAR" -pref="$PREF" )
+
+echo "ingest-n03: 正規化まで完了。"

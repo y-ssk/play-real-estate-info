@@ -65,11 +65,11 @@ migrate-down: ## 直近の1マイグレーションを戻す
 fetch-n03: ## N03 を取得して配置（既定: 令和5年版・東京都。例 make fetch-n03 N03_YEAR=2023 N03_PREF=13）
 	@scripts/fetch-n03.sh $(N03_YEAR) $(N03_PREF)
 
-# 投入＋正規化＝①ogr2ogr で n03_raw（生）→ ②go で admin_unit（5桁集約・値域・冪等）。
-# パスワードは script 内で PGPASSWORD 経由・go は POSTGRES_* を環境から読む（接続文字列を端末に出さない）。
+# 投入＋正規化＝①ogr2ogr で n03_raw（生）→ ②go で admin_unit（5桁集約・値域・冪等）。両工程とも
+# scripts/ingest-n03.sh の中で実行する（同スクリプトが config.env を source 済みゆえ go も POSTGRES_* を
+# 継承＝対話/非対話どのシェルから呼んでも同じに動く）。パスワードは PGPASSWORD 経由・接続文字列は端末に出さない。
 ingest-n03: ## N03 を投入し正規化（要 DB 起動・source config.env。例 make ingest-n03 N03_YEAR=2023 N03_PREF=13）
 	@scripts/ingest-n03.sh $(N03_YEAR) $(N03_PREF)
-	@go run ./cmd/ingest -year=$(N03_YEAR) -pref=$(N03_PREF)
 
 ## --- 検証 ---
 lint: lint-go lint-web ## Go と FE の lint

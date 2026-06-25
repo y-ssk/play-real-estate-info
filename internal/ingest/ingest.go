@@ -58,22 +58,24 @@ func Normalize(ctx context.Context, dsn string, year int, pref string) (Result, 
 		return Result{}, fmt.Errorf("既存 admin_unit(pref=%s) の削除に失敗: %w", pref, err)
 	}
 
-	// N03_007（5桁文字列）で束ねる。name は同一コード内で同じ想定だが、ディゾルブの集約に合わせ max() を取る。
-	// left("N03_007",2)=pref で対象県のみ・"N03_007" ~ '^[0-9]{5}$' で非数値/欠損行を除外（値域・欠損対処）。
+	// n03_007（5桁文字列）で束ねる。name は同一コード内で同じ想定だが、ディゾルブの集約に合わせ max() を取る。
+	// left(n03_007,2)=pref で対象県のみ・n03_007 ~ '^[0-9]{5}$' で非数値/欠損行を除外（値域・欠損対処）。
+	// 列名は小文字：ogr2ogr は PostgreSQL 投入時に既定で識別子を小文字化する（LAUNDER=YES）ため、
+	// GeoJSON 属性 N03_007/N03_004 はテーブルでは n03_007/n03_004 になる（実行で確認）。
 	const insertSQL = `
 INSERT INTO admin_unit (code, unit_kind, name, pref_code, geom)
-SELECT "N03_007",
+SELECT n03_007,
        'municipality',
-       max("N03_004"),
-       left("N03_007", 2),
+       max(n03_004),
+       left(n03_007, 2),
        ST_Multi(ST_Union(geom))
 FROM n03_raw
-WHERE left("N03_007", 2) = $1
-  AND "N03_007" ~ '^[0-9]{5}$'
-GROUP BY "N03_007"`
+WHERE left(n03_007, 2) = $1
+  AND n03_007 ~ '^[0-9]{5}$'
+GROUP BY n03_007`
 	tag, err := tx.Exec(ctx, insertSQL, pref)
 	if err != nil {
-		return Result{}, fmt.Errorf("admin_unit への正規化 INSERT に失敗（n03_raw の投入と列名 N03_007/N03_004 を確認）: %w", err)
+		return Result{}, fmt.Errorf("admin_unit への正規化 INSERT に失敗（n03_raw の投入と列名 n03_007/n03_004 を確認）: %w", err)
 	}
 	inserted := int(tag.RowsAffected())
 
