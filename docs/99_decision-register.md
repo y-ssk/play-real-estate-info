@@ -167,6 +167,7 @@
 | 各MLIT APIのIF定義・形式・パラメータの最終確認 | 各エンドポイント実装時（公式マニュアル＋IF定義を必ず確認。憶測でクライアントを書かない）。仕組み: `docs/api-if-spec/` に1API1ファイルで転記（`_TEMPLATE.md` を複製） |
 | APIキーを sops+age で暗号化コミットへ昇格（現状はリポ外 `~/.config/secret.yaml`＝確定） | CI・チーム・本番のいずれかが必要になった時 |
 | アイコン体系（地図UIで不足分） | DS調整の締め |
+| melta-ui トークン層の材料化（単一情報源化） | **トークンが複数箇所で要る／DS本格化時**。発見（段1④）＝`melta-ui/tokens/tokens.json` は通常ファイルで中身が `../design/contracts/tokens.json`（参照先が存在しない dangling・取り込み時の不整合）。CSS トークン層が未整備で、MapLibre paint 値は `web/src/styles/mapTokens.ts` に slate-400 等を手写しで集約（MVP許容）。将来 melta トークンを正規に解決可能にし、色/太さの単一情報源へ寄せる（手写しの二重管理を解消）。MapLibre は CSS変数を解さないため、トークン→paint値の橋渡し方も併せて決める |
 | 機種依存文字（絵文字）排除の範囲拡大（UI→ドキュメント/リポジトリ全体） | **いずれ対応（優先度低）**。現状ルールは FE/UI 限定（`DESIGN.md`§6・`frontend-conventions`§4）。本意はリポジトリ全体で機種依存文字を避けたいが、`docs/99` の状態マーカー（✅/🔲/♻）は機能的・実害小のため一掃は当面見送り（A維持）。拡大時＝conventions/DESIGN の文言を「UI・ドキュメント問わず」に直し、README の `✅`・本表の状態記号・ADR等の `⚠` を非絵文字へ置換 |
 | テスト方針（特にETLの正しさ） | ETL基盤着手時 |
 | エラー/データ欠損のUI表現 | UI設計時（優先度高） |

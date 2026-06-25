@@ -36,8 +36,8 @@ dev: db-up ## DB を起動し、API（:8080）と FE 開発サーバ（:3000）�
 	@echo "  make dev-api   # Go API（:8080）"
 	@echo "  make dev-web   # Rsbuild 開発サーバ（:3000・/api を :8080 へプロキシ）"
 
-dev-api: ## Go API を起動（:8080）
-	go run ./cmd/api
+dev-api: ## Go API を起動（:8080・config.env を自動読込＝どのシェルからでも可）
+	@scripts/dev-api.sh
 
 dev-web: fe-install ## FE 開発サーバを起動（Rsbuild・:3000）
 	$(PNPM) dev

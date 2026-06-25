@@ -41,6 +41,8 @@ make test             # go test / Jest
 make build            # FE を dist へビルド → API バイナリに embed して go build
 ```
 
+- **どこで動くか**：DB＝**Docker コンテナ**（`machilens-db`・:5432）／API（Go）＝**ホストで直接**（`make dev-api`・:8080）／FE 開発サーバ（Rsbuild）＝**ホストで直接**（`make dev-web`・:3000）。`dev-api`/`dev-web` は**起動しっぱなしの常駐プロセス**（別ターミナルで開いたまま）。`make dev-api` は `scripts/dev-api.sh` 経由で `config.env` を自動読込するため、source 済みでないシェルからでも起動できる。
+- 動作確認（指標なしの輪郭描画まで）：上記3つを起動 →（DBへ N03 投入済みなら）ブラウザ `http://localhost:3000` で GSI 下地＋区の輪郭線。API 単体は `curl -s localhost:8080/api/choropleth/geometry | python3 -c "import sys,json;print(len(json.load(sys.stdin)['features']))"` で件数（東京=69）を確認できる。
 - 開発時は Rsbuild 開発サーバ（:3000）が `/api` を Go（:8080）へプロキシする。本番のみ `web/dist` を Go が embed 配信する二段構え（`ADR-0013`）。
 - `make migrate` は host へ golang-migrate を入れず Docker（`migrate/migrate`）で回す（再現性）。`--network=host` で host の `localhost:$POSTGRES_PORT` に届く。
 - DB 接続情報は `docker-compose.yml`・`Makefile` ともに環境変数（`POSTGRES_*`）から読む。**実値はリポジトリに置かない**（下記「DB 接続情報」）。
