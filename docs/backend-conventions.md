@@ -93,14 +93,21 @@
 - **可逆**：ルート増でグループ化/ミドルウェアが手書きで苦しくなったら `chi`（標準 `http.Handler` 互換）を差し込む。先回りで入れない（YAGNI）。
 - **Go 1.22 以上**を前提（`go.mod` の `go` ディレクティブで固定）。
 
-## §5 ETL／データ投入（境界 N03 など・根拠：`ADR-0022`）
+## §5 ETL／データ投入（境界 N03 など・根拠：`ADR-0022`・`ADR-0023`）
 
-- **投入と正規化を分ける（継ぎ目）**：シェープ→PostGISテーブル化（機械的）＝外部ツール／5桁コード化・年度固定・値域チェック（本丸の結合基盤）＝**SQL・Go**。正規化は投入ツールに埋めない（ツールを替えても不変・`ADR-0015`）。
-- **投入ツール＝`shp2pgsql`**。`-W CP932`（文字コード）・`-s`（SRID→6668・`ADR-0014`）・`-I`（GiST索引）。例 `shp2pgsql -s 6668 -I -W CP932 N03.shp n03_raw | psql "$DB_URL"`。**⚠ `shp2pgsql`/`ogr2ogr` は `postgis/postgis` 公式imageに非同梱と段0判明**（別パッケージ：`postgis`／`gdal-bin`）。**ローダ調達は `docs/99`「N03 投入経路の確定」で段1決定**（カスタム/別ingestイメージ等）。
-- **`ogr2ogr`(GDAL) は寄せ先**：配布がシェープでなくなった／再投影が複雑なときだけ（多形式・PROJ）。常時依存にしない（可逆）。
+- **投入と正規化を分ける（継ぎ目）**：シェープ→PostGISテーブル化（機械的）＝外部ツール／5桁コード化・年度固定・値域チェック（本丸の結合基盤）＝**SQL・Go**。正規化は投入ツールに埋めない（ツールを替えても不変・`ADR-0015`）。投入ツール選び・置き場所が影響するのは投入工程だけで、正規化以降には波及しない。
+- **ローダの置き場所＝使い捨ての別コンテナ**（`ADR-0023`）。投入時だけ GDAL 公式イメージ `ghcr.io/osgeo/gdal` から `docker run --rm` で起動し、compose と同一ネットワーク越しに DB へ流し込み、終了後に破棄する。**DB イメージ（`postgis/postgis`）は公式のまま改変しない**（攻撃面最小・再現性・役割分離）。DB イメージに同居（カスタム build）・端末直インストールは捨てた（`ADR-0023`）。
+- **ローダ＝`ogr2ogr`（GDAL）**。GDAL 公式イメージに同梱で入手・保守が素直。N03 はシェープゆえ機能十分。例（フラグは実ファイル確認後に確定）：
+  ```bash
+  docker run --rm -v ./data/n03:/data --network <composeのDBネットワーク> \
+    ghcr.io/osgeo/gdal \
+    ogr2ogr -f PostgreSQL "PG:host=db dbname=... user=..." /data/N03.shp \
+      -nln n03_raw -t_srs EPSG:6668 -lco GEOMETRY_NAME=geom -lco SPATIAL_INDEX=GIST
+  ```
+  文字コードは `.dbf` 確認後に `--config SHAPE_ENCODING <CP932 等>` を付す。`shp2pgsql` は専用イメージが乏しく自作の手間ゆえ採らない（`ADR-0023`。将来固有の事情が出れば継ぎ目で可逆）。
 - **取得＝低頻度（年1回）**：直リンクの取得スクリプト（年度・都県をパラメータ）で半自動。完全自動化しない。
-- **実装時に実物で確認**（憶測しない）：`shp2pgsql` の image 同梱（`docker run --rm postgis/postgis which shp2pgsql`）・`.prj` の座標系・`.dbf` の文字コード。
-- 詳細解説＝`docs/notes/2026-06-25-n03-ingest.md`。
+- **実装時に実物で確認**（憶測しない）：GDAL 公式イメージの `ogr2ogr` 同梱（`docker run --rm ghcr.io/osgeo/gdal ogr2ogr --version`）・`.prj` の座標系（→6668 変換要否）・`.dbf` の文字コード。
+- 詳細解説＝`docs/notes/2026-06-25-n03-ingest.md`（投入工程・シェープ・SRID）／`docs/notes/2026-06-25-n03-ingest-path.md`（登場人物・流れ・ローダの置き場所）。
 
 ## §6 以降（今後追記）
 
