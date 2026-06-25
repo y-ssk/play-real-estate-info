@@ -1,21 +1,28 @@
 # ローカル開発用 PostGIS（ADR-0013：postgis/postgis イメージ・Rancher Desktop）。
 # 段0：拡張有効化＋空の admin_unit を migrate で流すための DB を立てるだけ。
-# 認証情報はローカル開発の固定値（秘匿ではない・MLIT_API_KEY とは無関係）。本番は別管理。
+#
+# 接続情報はベタ書きせずシェル環境変数で渡す（MLIT_API_KEY と同じ思想：実値はリポジトリ外の
+# ~/.config/ に置き ~/.bashrc から source・人間が手動設定・README に手順）。ローカル用だが、特に
+# パスワードをトラッキング対象ファイルに残さないため（.gitignore の *.env 方針と一致）。
+# 未設定は ${VAR:?...} で即エラーにし、握りつぶさず気づけるようにする。
 services:
   db:
     image: postgis/postgis:16-3.4 # shp2pgsql は本イメージに同梱されない点に注意（段1で別途・README/§5参照）
     container_name: machilens-db
     environment:
-      POSTGRES_USER: machilens
-      POSTGRES_PASSWORD: machilens
-      POSTGRES_DB: machilens
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER 未設定。~/.config/ の env を設定し source（README 参照）}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 未設定。~/.config/ の env を設定し source（README 参照）}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB 未設定。~/.config/ の env を設定し source（README 参照）}
     ports:
-      - "5432:5432"
+      # ホスト公開ポートも環境変数化（既定 5432）。コンテナ内側は固定 5432。
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - machilens-db-data:/var/lib/postgresql/data
     healthcheck:
       # migrate を流す前に DB が受け付ける状態かを待てるようにする（make migrate が依存）。
-      test: ["CMD-SHELL", "pg_isready -U machilens -d machilens"]
+      # 認証情報を二重に持たないよう、コンテナ内へ渡る $POSTGRES_USER/$POSTGRES_DB を参照する
+      # （compose の $ エスケープのため $$ で書く＝コンテナ内シェルで展開させる）。
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 3s
       timeout: 3s
       retries: 10

@@ -2,13 +2,21 @@
 # 本丸（ETL・データ・地図表現）に集中できるよう、起動・マイグレ・lint・test を1入口に集約する。
 #
 # 前提ツール：Go 1.22+ / Docker（Compose v2）/ Node 24（corepack で pnpm）。
-# DB 認証はローカル固定値（docker-compose.yml と一致・秘匿ではない）。MLIT_API_KEY は段0 では不要。
+# DB 接続情報はシェル環境変数で渡す（~/.config/ の env を ~/.bashrc から source・README 参照）。
+# compose と migrate が同じ env を見るので値が二重化しない。MLIT_API_KEY は段0 では不要。
 
 # golang-migrate を host へ入れず Docker で回す（再現性・ホスト無依存）。
 MIGRATE_IMAGE ?= migrate/migrate:v4.18.1
-# コンテナ内からホストの DB を見るため host.docker.internal を使う（compose は 5432 を publish）。
-DB_URL ?= postgres://machilens:machilens@host.docker.internal:5432/machilens?sslmode=disable
 PNPM ?= pnpm --dir web
+
+# DB 接続文字列を環境変数から組み立てる（compose と同じ POSTGRES_* を参照）。
+# 未設定はここでエラーにし、握りつぶさず気づけるようにする（compose の ${VAR:?...} と同じ思想）。
+POSTGRES_USER ?= $(error POSTGRES_USER 未設定。~/.config/ の env を設定し source（README 参照）)
+POSTGRES_PASSWORD ?= $(error POSTGRES_PASSWORD 未設定。~/.config/ の env を設定し source（README 参照）)
+POSTGRES_DB ?= $(error POSTGRES_DB 未設定。~/.config/ の env を設定し source（README 参照）)
+POSTGRES_PORT ?= 5432
+# migrate コンテナは --network=host で host の localhost:PORT に届く（compose が publish）。
+DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 
 .PHONY: help dev dev-api dev-web db-up db-down migrate migrate-down lint lint-go lint-web test test-go test-web build build-web fe-install
 
@@ -35,14 +43,14 @@ db-down: ## PostGIS コンテナを停止（データは保持）
 	docker compose stop db
 
 migrate: ## migrations を適用（PostGIS 拡張＋空の admin_unit）
-	docker run --rm --add-host=host.docker.internal:host-gateway \
+	docker run --rm --network=host \
 		-v $(CURDIR)/migrations:/migrations $(MIGRATE_IMAGE) \
-		-path=/migrations -database "$(DB_URL)" up
+		-path=/migrations -database "$(DATABASE_URL)" up
 
 migrate-down: ## 直近の1マイグレーションを戻す
-	docker run --rm --add-host=host.docker.internal:host-gateway \
+	docker run --rm --network=host \
 		-v $(CURDIR)/migrations:/migrations $(MIGRATE_IMAGE) \
-		-path=/migrations -database "$(DB_URL)" down 1
+		-path=/migrations -database "$(DATABASE_URL)" down 1
 
 ## --- 検証 ---
 lint: lint-go lint-web ## Go と FE の lint

@@ -18,12 +18,16 @@
 前提ツール：**Go 1.22+**（`ADR-0020`）／**Docker（Compose v2）**／**Node 24**（`ADR-0021`・`corepack` で pnpm 固定）。
 段0 は足場のみ（データ投入・指標は段1以降）。`MLIT_API_KEY` は段0 では不要。
 
+> **先に DB 接続用の環境変数を設定**しておく（下記「DB 接続情報」）。未設定だと `make db-up`/`make migrate` は
+> 手順を案内して止まる（実値をリポジトリに残さないため・`MLIT_API_KEY` と同じ思想）。
+
 ```bash
 # 0. FE 依存を入れる（corepack が pnpm を版固定で用意）
 corepack enable
 make fe-install
 
 # 1. DB（PostGIS）を起動 → migrations を流す（PostGIS 拡張＋空の admin_unit）
+#    ※ POSTGRES_* を ~/.config/ の env で設定し source 済みであること（下記「DB 接続情報」）
 make db-up
 make migrate
 
@@ -38,10 +42,52 @@ make build            # FE を dist へビルド → API バイナリに embed �
 ```
 
 - 開発時は Rsbuild 開発サーバ（:3000）が `/api` を Go（:8080）へプロキシする。本番のみ `web/dist` を Go が embed 配信する二段構え（`ADR-0013`）。
-- `make migrate` は host へ golang-migrate を入れず Docker（`migrate/migrate`）で回す（再現性）。
-- DB 認証はローカル固定値（`docker-compose.yml` と一致・秘匿ではない・`MLIT_API_KEY` とは無関係）。
+- `make migrate` は host へ golang-migrate を入れず Docker（`migrate/migrate`）で回す（再現性）。`--network=host` で host の `localhost:$POSTGRES_PORT` に届く。
+- DB 接続情報は `docker-compose.yml`・`Makefile` ともに環境変数（`POSTGRES_*`）から読む。**実値はリポジトリに置かない**（下記「DB 接続情報」）。
 
 > 注意（段1の前提・要対応）：境界投入ツール `shp2pgsql` は `postgis/postgis:16-3.4` イメージに**同梱されていない**ことを段0 で確認した（`backend-conventions` §5・`ADR-0022` は同梱前提）。段1 着手時に投入経路を確定する（`docs/99` に論点登録）。
+
+### DB 接続情報（環境変数・人間が手動で設定）
+
+DB のユーザー/パスワード/DB 名/公開ポートは **リポジトリにベタ書きせず**、リポジトリ外の env ファイルに置いて
+環境変数で渡す（`MLIT_API_KEY` と同じ思想：実値はリポジトリ外・手動設定・ここに手順）。`docker-compose.yml` と
+`Makefile`（`make migrate` の接続文字列）が同じ変数を見るので、値が二重化しない。
+
+| 変数 | 意味 | ローカル例値 | 必須 |
+|---|---|---|---|
+| `POSTGRES_USER` | PostgreSQL ユーザー名 | `machilens` | ✅（未設定でエラー） |
+| `POSTGRES_PASSWORD` | PostgreSQL パスワード | `localdevpass`（任意の文字列） | ✅（未設定でエラー） |
+| `POSTGRES_DB` | データベース名 | `machilens` | ✅（未設定でエラー） |
+| `POSTGRES_PORT` | host 側の公開ポート | `5432`（既定） | 任意（既定 5432） |
+
+> ローカル用だが、特にパスワードを tracked なファイルに残さない（`.gitignore` の `*.env` 方針と一致）。
+> 本番は別の運用（クラウドのシークレット管理等）に差し替える。
+
+#### 設定（初回）
+
+```bash
+# 1. env ファイルを作成（リポジトリ外・パーミッション 600）
+mkdir -p ~/.config/machilens && touch ~/.config/machilens/db.env && chmod 600 ~/.config/machilens/db.env
+
+# 2. 普通のターミナルでエディタを開き、実値を記入する（お好みのエディタで）
+nano ~/.config/machilens/db.env   # 例: vim / code でも可
+#    記入内容（export 付き＝source で環境変数になる）:
+#      export POSTGRES_USER="machilens"
+#      export POSTGRES_PASSWORD="<任意のローカル用パスワード>"
+#      export POSTGRES_DB="machilens"
+#      export POSTGRES_PORT="5432"        # 既定でよければ省略可
+
+# 3. シェル起動時に読み込む（~/.bashrc に1行だけ追加）
+grep -q 'machilens/db.env' ~/.bashrc || echo 'source ~/.config/machilens/db.env' >> ~/.bashrc
+source ~/.bashrc
+
+# 4. 確認（値は表示せず、セット済みか否かだけ）
+[ -n "$POSTGRES_PASSWORD" ] && echo "DB env: set" || echo "DB env: NOT set"
+```
+
+> 値の記入・更新は**エディタで**行う（`echo` で書くとパスワードが `~/.bash_history` に残るため）。
+> `MLIT_API_KEY` を `~/.config/config.env` に置く運用（下記「秘匿情報」）と同じ要領。両方を同じ env ファイルに
+> まとめても、別ファイルにしてもよい（どちらも `~/.bashrc` から source されていれば届く）。
 
 ## セッション再開（運用ルール）
 
