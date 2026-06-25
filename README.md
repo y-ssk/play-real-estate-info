@@ -45,7 +45,11 @@ make build            # FE を dist へビルド → API バイナリに embed �
 - `make migrate` は host へ golang-migrate を入れず Docker（`migrate/migrate`）で回す（再現性）。`--network=host` で host の `localhost:$POSTGRES_PORT` に届く。
 - DB 接続情報は `docker-compose.yml`・`Makefile` ともに環境変数（`POSTGRES_*`）から読む。**実値はリポジトリに置かない**（下記「DB 接続情報」）。
 
-> 注意（段1の前提・要対応）：境界投入ツール `shp2pgsql` は `postgis/postgis:16-3.4` イメージに**同梱されていない**ことを段0 で確認した（`backend-conventions` §5・`ADR-0022` は同梱前提）。段1 着手時に投入経路を確定する（`docs/99` に論点登録）。
+### 境界データ（N03）の取り込み
+
+市区町村境界（国土数値情報 N03）の取得・投入・正規化は `make fetch-n03` / `make ingest-n03`（既定＝令和5年版・東京都）。
+逐次手順・検証・つまずきは手順書 **`docs/runbooks/n03-ingest.md`** を参照（投入経路は `ADR-0023`/`ADR-0024`・`backend-conventions` §5/§5.1。
+投入ツール `ogr2ogr` は GDAL 公式イメージを使い捨てで使う＝`postgis/postgis` イメージは公式のまま改変しない）。
 
 ### DB 接続情報（環境変数・人間が手動で設定）
 

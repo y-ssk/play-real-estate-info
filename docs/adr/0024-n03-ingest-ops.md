@@ -8,7 +8,7 @@
 
 ## 結論（決定）
 - **実行手段＝薄いシェルスクリプト＋Makefile入口**。実体は `scripts/ingest-n03.sh`（GDAL公式イメージを `docker run --rm --network=host` で呼ぶ薄いラッパ）、入口は `make ingest-n03`（`make migrate` と同じ流儀＝env駆動・`@`でecho抑制・`source ~/.config/config.env`）。取得は対の `scripts/fetch-n03.sh`（直リンク→配置規約位置へ展開）。**手打ち `docker run` は再現性ゼロで却下**。
-- **正規化＝Go（`cmd/ingest`）に持つ**。5桁コード化・年度固定・値域チェック・ディゾルブは本丸＝層1検証対象ゆえ、Goのテストで守れる形に（`ADR-0017` の「本丸/固定SQLはGoに持つ」と整合）。psql で SQL ファイルを流す案は薄いが層1をテストで守れないため採らない。
+- **正規化＝Go（`cmd/ingest`）に持つ**。5桁コード化・年度固定・値域チェック・図形を1つにまとめる集約は本丸＝層1検証対象ゆえ、Goのテストで守れる形に（`ADR-0017` の「本丸/固定SQLはGoに持つ」と整合）。psql で SQL ファイルを流す案は薄いが層1をテストで守れないため採らない。
 - **`n03_raw` 中継**：投入（生・無加工）と正規化（本丸）をテーブルで分離（`ADR-0022`/`ADR-0015` の継ぎ目・層1を目視で隔離）。
 - **データ配置規約＝`data/n03/{YEAR}/{PREF}/`**。`fetch-n03.sh` がここに展開、`ingest-n03.sh` はここから読む（path は YEAR/PREF から一意に組み立て）。**`temp/` は廃止**し配置を一本化＝誰がやっても同じ場所・構造・コマンド。`data/` は `.gitignore`（大きいバイナリはコミットしない・取得scriptで再現）。
 - **冪等性**（`ADR-0022` のETL要件）：`n03_raw` は投入前に `DROP`/`TRUNCATE`、`admin_unit` は**都県単位**（コード上2桁＝PREF）で `DELETE`→`INSERT`。何度流しても同結果（9都県を順に流せる・全消しにしない）。
@@ -25,3 +25,10 @@
 - お作法（取り決め）＝`backend-conventions` §5 に配置規約・冪等・実行手段・runbook導線を反映（生きた文書）。`CLAUDE.md` ドキュメント地図に `docs/runbooks/` を配線。
 - **死守事項**（`CLAUDE.md` ハードルール）：AIは `config.env` を読まない/開かない（私が触るのは script ファイルだけ）・**起動はオーナーの対話シェル**・パスワードは `PGPASSWORD` 経由で渡し接続文字列に埋めない＋echo抑制（端末/`ps`/履歴に出さない）。
 - **可逆**：実行手段（script/Make）と compose 格上げは継ぎ目の外＝運用層で差し替え可。正規化（本丸）に波及しない。
+
+## 追記（2026-06-25・実装で確定した値）
+> 凍結記録に実装の事実を1点記す。最新の取り決め（コマンド形・フラグ）は生きた文書 `backend-conventions` §5/§5.1 と手順書 `docs/runbooks/n03-ingest.md` を引く。
+- 取得＝`scripts/fetch-n03.sh`／投入＝`scripts/ingest-n03.sh`／正規化＝`cmd/ingest`＋`internal/ingest`／入口＝`make fetch-n03`・`make ingest-n03`（対象は `N03_YEAR`/`N03_PREF`・既定 2023/13）。
+- 投入＝**GeoJSON 入力**（UTF-8・`EPSG:6668` 自己宣言）を `ogr2ogr -nln n03_raw -overwrite -a_srs EPSG:6668 -lco GEOMETRY_NAME=geom`。パスワードは `-e PGPASSWORD`（接続文字列に埋めない）。
+- 取得 URL（実在確認済）＝`https://nlftp.mlit.go.jp/ksj/gml/data/N03/N03-{YEAR}/N03-{YEAR}0101_{PREF}_GML.zip`。
+- 層1の件数妥当性＝東京都(13)は **69 行**（6177 ポリゴンを 5桁コードで束ねた数）。
