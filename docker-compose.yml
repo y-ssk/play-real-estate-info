@@ -1,0 +1,24 @@
+# ローカル開発用 PostGIS（ADR-0013：postgis/postgis イメージ・Rancher Desktop）。
+# 段0：拡張有効化＋空の admin_unit を migrate で流すための DB を立てるだけ。
+# 認証情報はローカル開発の固定値（秘匿ではない・MLIT_API_KEY とは無関係）。本番は別管理。
+services:
+  db:
+    image: postgis/postgis:16-3.4 # shp2pgsql は本イメージに同梱されない点に注意（段1で別途・README/§5参照）
+    container_name: machilens-db
+    environment:
+      POSTGRES_USER: machilens
+      POSTGRES_PASSWORD: machilens
+      POSTGRES_DB: machilens
+    ports:
+      - "5432:5432"
+    volumes:
+      - machilens-db-data:/var/lib/postgresql/data
+    healthcheck:
+      # migrate を流す前に DB が受け付ける状態かを待てるようにする（make migrate が依存）。
+      test: ["CMD-SHELL", "pg_isready -U machilens -d machilens"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  machilens-db-data:
