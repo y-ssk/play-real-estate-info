@@ -18,10 +18,15 @@ POSTGRES_PORT ?= 5432
 # migrate コンテナは --network=host で host の localhost:PORT に届く（compose が publish）。
 DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 
-.PHONY: help dev dev-api dev-web db-up db-down migrate migrate-down lint lint-go lint-web test test-go test-web build build-web fe-install
+# N03 投入の対象（年度・都県）。既定は段1の対象＝令和5年版・東京都（ADR-0024）。
+# 別の版/県を流すときは make fetch-n03 YEAR=... PREF=... のように上書きする。
+N03_YEAR ?= 2023
+N03_PREF ?= 13
+
+.PHONY: help dev dev-api dev-web db-up db-down migrate migrate-down fetch-n03 ingest-n03 lint lint-go lint-web test test-go test-web build build-web fe-install
 
 help: ## このヘルプを表示
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
 
 ## --- 起動 ---
 dev: db-up ## DB を起動し、API（:8080）と FE 開発サーバ（:3000）の起動方法を案内
@@ -52,6 +57,19 @@ migrate-down: ## 直近の1マイグレーションを戻す
 	@docker run --rm --network=host \
 		-v $(CURDIR)/migrations:/migrations $(MIGRATE_IMAGE) \
 		-path=/migrations -database "$(DATABASE_URL)" down 1
+
+## --- N03 境界の取得・投入（ADR-0024・backend-conventions §5.1・手順は docs/runbooks/n03-ingest.md）---
+# 取得＝直リンクで落として data/n03/{YEAR}/{PREF}/ へ展開（年度・都県は N03_YEAR/N03_PREF で上書き可）。
+# 実行行は @ で echo 抑制＝migrate と同じ流儀（コマンド行に接続情報を将来足しても端末・履歴に出さない方針を揃える）。
+# 進捗は script/go 側の echo・log が出すので、Make のコマンド行を消しても手順は追える。
+fetch-n03: ## N03 を取得して配置（既定: 令和5年版・東京都。例 make fetch-n03 N03_YEAR=2023 N03_PREF=13）
+	@scripts/fetch-n03.sh $(N03_YEAR) $(N03_PREF)
+
+# 投入＋正規化＝①ogr2ogr で n03_raw（生）→ ②go で admin_unit（5桁集約・値域・冪等）。
+# パスワードは script 内で PGPASSWORD 経由・go は POSTGRES_* を環境から読む（接続文字列を端末に出さない）。
+ingest-n03: ## N03 を投入し正規化（要 DB 起動・source config.env。例 make ingest-n03 N03_YEAR=2023 N03_PREF=13）
+	@scripts/ingest-n03.sh $(N03_YEAR) $(N03_PREF)
+	@go run ./cmd/ingest -year=$(N03_YEAR) -pref=$(N03_PREF)
 
 ## --- 検証 ---
 lint: lint-go lint-web ## Go と FE の lint
