@@ -1,0 +1,7 @@
+# pnpm 11 の設定ファイル（postinstall 許可の置き場・ADR-0021）。
+# なぜ必要か：pnpm 10+ は postinstall を既定でブロックする（供給網攻撃面の縮小）。
+# Biome は native バイナリを postinstall でしか展開しないため、これだけ true で許可する。
+# core-js の postinstall は funding 通知だけで不要なので false（攻撃面を増やさない）。
+allowBuilds:
+  '@biomejs/biome': true
+  core-js: false

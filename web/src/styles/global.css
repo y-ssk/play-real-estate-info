@@ -1,0 +1,9 @@
+/* 段0 の最小リセット。トークン/melta-ui 取り込みは段1以降（DESIGN §0・§4）。
+   地図を全画面に敷くため html/body/#root を 100% 高さにする。 */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}

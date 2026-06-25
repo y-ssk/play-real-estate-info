@@ -89,7 +89,9 @@ melta の本文は 18px／行間2.0（Breathable）。地図UIの狭いパネル
 
 ## 6. アイコン
 
-- melta-ui の Charcoal（207）＋ Lucide（15）を継承。
+- melta-ui の Charcoal（207）＋ Lucide（15）を継承。**描画は SVG**（melta-ui 各部品と同じ）。
+- **絵文字（機種依存文字）は UI に使わない**。環境（OS/フォント）で字形・有無が変わり、意味も色も制御できず DS の外。意味を添えるアイコンは上記体系（Charcoal/Lucide・SVG）を使う。
+- アイコンは**必要なときだけ**（飾りで足さない）。
 - 地図UI特有（レイヤー、ピン、凡例、現在地等）で不足するアイコンの扱いは、DS調整の締めで確認（`99_decision-register.md`）。
 
 ---

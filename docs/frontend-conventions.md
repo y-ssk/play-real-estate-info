@@ -28,6 +28,7 @@
 - 汎用UIは **`components/`（melta-ui 取り込み層）から参照**。機能側で生の見た目を作り込まない。
 - **生値を使わない＝意味/用途トークン経由**（色・余白・タイポ）。**トークンと色の定義そのものは `DESIGN.md`**（本書では定義しない・指すだけ）。
 - melta-ui の **`prohibited.md`（禁止事項）を遵守**し、取り込み部分の **MIT 表示を保持**。
+- **絵文字（機種依存文字）を UI に使わない**（環境差で崩れる・DSの外＝`DESIGN.md` §6）。アイコンは `components/`（melta-ui 取り込み層＝Charcoal/Lucide・SVG）から、**必要なときだけ**使う。不足分は DS調整の締め（`docs/99`「アイコン体系」）。
 
 ## §5 出典／欠損（根拠：`ADR-0011`）
 - **出典は全データに保持し、必ず画面に表示**（地図の attribution と各項目）。
@@ -62,5 +63,11 @@
 7. 公開シンボルに doc があるか・WHAT でなく WHY を書いているか。
 8. Biome は通るか。本丸の変更に分岐テストがあるか。
 
-## §11 以降（今後追記）
-> パッケージ管理・Node 版、pre-commit 自動化、アクセシビリティの実装作法などが決まったら章を足す（`docs/99` に保留登録済み・同じ器に集約し文書の乱立を防ぐ）。
+## §11 パッケージ管理・Node 版（根拠：`ADR-0021`）
+- **パッケージ管理＝pnpm**。`corepack` で版固定＝`package.json` の `packageManager: "pnpm@x.y.z"`（手動の全体導入をしない）。lockfile＝`pnpm-lock.yaml` はコミット。
+- **CI/pre-commit の再現インストールは `pnpm install --frozen-lockfile`**（lockfile を書き換えさせない）。
+- **Node 版は `.nvmrc`＋`engines` で固定**。現行 LTS 系（**最新 LTS は実装着手時に公式で確認**・憶測で数字を打たない）。
+- **npm の癖を持ち込まない**：`npm install <pkg>`→`pnpm add`、`npx`→`pnpm dlx`、`npm run`→`pnpm <script>`。対応表と「なぜ pnpm か（幽霊依存を弾く）」は `docs/notes/2026-06-25-package-managers.md`。
+
+## §12 以降（今後追記）
+> pre-commit 自動化、アクセシビリティの実装作法などが決まったら章を足す（`docs/99` に保留登録済み・同じ器に集約し文書の乱立を防ぐ）。
