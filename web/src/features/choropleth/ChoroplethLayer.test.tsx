@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { ChoroplethGeometry } from "../../lib/choropleth";
 import { createQueryClient } from "../../lib/queryClient";
+import { CHOROPLETH_OUTLINE_COLOR, CHOROPLETH_OUTLINE_WIDTH } from "../../styles/mapTokens";
 import { ChoroplethLayer } from "./ChoroplethLayer";
 
 // react-map-gl/maplibre の Source/Layer は Map コンテキスト（WebGL）を要するため、
@@ -103,9 +104,10 @@ describe("ChoroplethLayer", () => {
     expect(layer).toHaveAttribute("data-type", "line");
     // Layer の source は Source の id と一致＝MapLibre の結線が成立する。
     expect(layer).toHaveAttribute("data-source", "choropleth");
-    // 色・太さはトークン由来（生値直書きしない＝DESIGN §4）。スレート系の境界色。
-    expect(layer).toHaveAttribute("data-line-color", "#94a3b8");
-    expect(layer).toHaveAttribute("data-line-width", "1");
+    // 色・太さはトークン由来（生値直書きしない＝DESIGN §4）。レイヤーがトークンを通していることを検証
+    // （値そのものはトークン側の責務＝ここで literal を二重管理しない。幅はズーム連動の式）。
+    expect(layer).toHaveAttribute("data-line-color", CHOROPLETH_OUTLINE_COLOR);
+    expect(layer).toHaveAttribute("data-line-width", String(CHOROPLETH_OUTLINE_WIDTH));
   });
 
   it("取得前は source を出さない（基図のみ＝描画を壊さない）", () => {
