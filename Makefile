@@ -56,8 +56,9 @@ migrate-down: ## 直近の1マイグレーションを戻す
 ## --- 検証 ---
 lint: lint-go lint-web ## Go と FE の lint
 
-lint-go: ## Go の整形チェック＋vet
-	gofmt -l . && go vet ./...
+lint-go: ## Go の整形チェック＋vet（未整形があれば fail）
+	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt 未整形:"; echo "$$out"; exit 1; fi
+	go vet ./...
 
 lint-web: fe-install ## FE の lint（Biome）
 	$(PNPM) lint
