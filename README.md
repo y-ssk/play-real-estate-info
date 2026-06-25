@@ -13,6 +13,36 @@
 - `docs/04_harness.md` — AI駆動の進め方
 - `docs/99_decision-register.md` — 決め事の台帳（確定・保留）
 
+## 開発（ローカル・段0 足場）
+
+前提ツール：**Go 1.22+**（`ADR-0020`）／**Docker（Compose v2）**／**Node 24**（`ADR-0021`・`corepack` で pnpm 固定）。
+段0 は足場のみ（データ投入・指標は段1以降）。`MLIT_API_KEY` は段0 では不要。
+
+```bash
+# 0. FE 依存を入れる（corepack が pnpm を版固定で用意）
+corepack enable
+make fe-install
+
+# 1. DB（PostGIS）を起動 → migrations を流す（PostGIS 拡張＋空の admin_unit）
+make db-up
+make migrate
+
+# 2. API（:8080）と FE 開発サーバ（:3000）を別ターミナルで
+make dev-api          # http://localhost:8080/api/health → {"status":"ok"}
+make dev-web          # http://localhost:3000 → GSI 淡色下地の空地図
+
+# 検証
+make lint             # gofmt+vet（Go）/ Biome（FE）
+make test             # go test / Jest
+make build            # FE を dist へビルド → API バイナリに embed して go build
+```
+
+- 開発時は Rsbuild 開発サーバ（:3000）が `/api` を Go（:8080）へプロキシする。本番のみ `web/dist` を Go が embed 配信する二段構え（`ADR-0013`）。
+- `make migrate` は host へ golang-migrate を入れず Docker（`migrate/migrate`）で回す（再現性）。
+- DB 認証はローカル固定値（`docker-compose.yml` と一致・秘匿ではない・`MLIT_API_KEY` とは無関係）。
+
+> 注意（段1の前提・要対応）：境界投入ツール `shp2pgsql` は `postgis/postgis:16-3.4` イメージに**同梱されていない**ことを段0 で確認した（`backend-conventions` §5・`ADR-0022` は同梱前提）。段1 着手時に投入経路を確定する（`docs/99` に論点登録）。
+
 ## セッション再開（運用ルール）
 
 長い文脈（roadmap 等）はチャットに貼れないので、**ファイルから読み込ませる**。
