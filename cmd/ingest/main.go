@@ -47,7 +47,7 @@ func run(year int, pref string) error {
 		return err
 	}
 
-	// なぜ全体に締め切りを設けるか：ST_Union は東京都全域のディゾルブで数十秒かかりうる本丸処理。
+	// なぜ全体に締め切りを設けるか：ST_Union は東京都全域の図形を1つにまとめる処理で数十秒かかりうる本丸処理。
 	// 無制限に待たず、止まったら気づける上限を置く（握りつぶさず即エラー）。Ctrl-C でも中断できる。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

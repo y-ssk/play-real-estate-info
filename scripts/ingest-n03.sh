@@ -60,7 +60,7 @@ echo "ingest-n03: YEAR=${YEAR} PREF=${PREF} input=${GEOJSON_NAME} → table n03_
 
 # --network=host で host の localhost:PORT（compose が publish）へ届く＝migrate と同じ流儀。
 # PG: 接続文字列にはパスワードを入れない（PGPASSWORD で渡す）。GEOMETRY_NAME/SPATIAL_INDEX は
-# 後段（admin_unit のディゾルブ）が geom 列で読めるよう揃える。-a_srs は .geojson が EPSG:6668 を
+# 後段（admin_unit へ図形を1つにまとめる集約）が geom 列で読めるよう揃える。-a_srs は .geojson が EPSG:6668 を
 # 自己宣言しているため再投影せず SRID を確定する目的（座標値はそのまま）。
 docker run --rm --network=host \
   -e PGPASSWORD="$POSTGRES_PASSWORD" \

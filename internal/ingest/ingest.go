@@ -4,7 +4,7 @@
 // 本パッケージは正規化のみを担い、投入ツールに依存しない。SQL は固定形（実行時に形が変わらない）だが、
 // 対象テーブル n03_raw は ogr2ogr が動的に作る一時テーブル（属性そのまま・大文字列名）でスキーマ管理外ゆえ、
 // sqlc ではなく生SQL（pgx 直）で書く＝backend-conventions §1 例外3（sqlc が扱えない・理由をここに明記）。
-// 投入件数・値域・幾何妥当性・文字化けは実行後アサートで層1（データの正しさ）を守る。
+// 投入件数・値域・幾何妥当性・文字化けは実行後の事後チェックで層1（データの正しさ）を守る。
 package ingest
 
 import (
@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Result は正規化の結果サマリ（ログ・検証用）。
+// Result は正規化の結果要約（ログ・検証用）。
 type Result struct {
 	Inserted   int    // admin_unit へ投入した行数（>0 を期待）
 	SampleCode string // 抜き取り検証に使った code（例 "13101"）
@@ -58,7 +58,7 @@ func Normalize(ctx context.Context, dsn string, year int, pref string) (Result, 
 		return Result{}, fmt.Errorf("既存 admin_unit(pref=%s) の削除に失敗: %w", pref, err)
 	}
 
-	// n03_007（5桁文字列）で束ねる。name は同一コード内で同じ想定だが、ディゾルブの集約に合わせ max() を取る。
+	// n03_007（5桁文字列）で束ねる。name は同一コード内で同じ想定だが、図形を1つにまとめる集約に合わせ max() を取る。
 	// left(n03_007,2)=pref で対象県のみ・n03_007 ~ '^[0-9]{5}$' で非数値/欠損行を除外（値域・欠損対処）。
 	// 列名は小文字：ogr2ogr は PostgreSQL 投入時に既定で識別子を小文字化する（LAUNDER=YES）ため、
 	// GeoJSON 属性 N03_007/N03_004 はテーブルでは n03_007/n03_004 になる（実行で確認）。
@@ -81,7 +81,7 @@ GROUP BY n03_007`
 
 	res, err := assert(ctx, tx, pref, inserted)
 	if err != nil {
-		// アサート失敗はロールバック（defer）＝壊れたデータを残さない。
+		// 事後チェック失敗はロールバック（defer）＝壊れたデータを残さない。
 		return Result{}, err
 	}
 
@@ -106,7 +106,7 @@ func ensureRawTable(ctx context.Context, conn *pgx.Conn) error {
 	return nil
 }
 
-// assert は実行後アサート（ADR-0024 成果物3・層1検証）。失敗は具体的な値付きで返す。
+// assert は実行後の事後チェック（ADR-0024 成果物3・層1検証）。失敗は具体的な値付きで返す。
 //
 // 検証項目：(1) 投入件数>0 (2) 全 code が5桁数字 (3) 全 geom が ST_IsValid
 // (4) サンプル名（あれば）が文字化けしていない日本語。pref 内に閉じて数える（他県を巻き込まない）。
@@ -164,7 +164,7 @@ func assert(ctx context.Context, tx pgx.Tx, pref string, inserted int) (Result, 
 // looksJapanese は文字列に日本語（CJK 統合漢字・ひらがな・カタカナ）が1文字以上含まれるかを返す。
 //
 // なぜこの判定か：CP932 を取り違えた投入では市区町村名が ASCII の化け文字や別言語の記号列になる。
-// 「日本語の文字が1つも無い」を文字化けの兆候として弾く（完全な正しさ判定ではなく層1のスモークテスト）。
+// 「日本語の文字が1つも無い」を文字化けの兆候として弾く（完全な正しさ判定ではなく層1の簡易チェック）。
 func looksJapanese(s string) bool {
 	for _, r := range s {
 		switch {
