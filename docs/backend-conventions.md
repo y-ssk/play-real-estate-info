@@ -126,7 +126,7 @@
 - **冪等性**（ETL要件）：`n03_raw` は投入前に `DROP`/`TRUNCATE`、`admin_unit` は**都県単位**（コード上2桁=PREF）で `DELETE`→`INSERT`。何度流しても同結果。
 - **死守**：AIは `config.env` 不可触（触るのは script ファイルのみ）・**起動はオーナーの対話シェル**・パスワードは `PGPASSWORD` 経由（接続文字列に埋めない）＋echo抑制で端末/`ps`/履歴に出さない。
 - **手順書＝`docs/runbooks/n03-ingest.md`**（運用手順 runbook・作成済み：前提→取得→投入＋正規化→検証→冪等→つまずき）。README はローカルセットアップに導線1行。入口＝`make fetch-n03` / `make ingest-n03`（対象は `N03_YEAR`/`N03_PREF` で上書き・既定 2023/13）。
-- 詳細解説＝`docs/notes/2026-06-25-n03-ingest.md`（投入工程・シェープ・SRID）／`docs/notes/2026-06-25-n03-ingest-path.md`（登場人物・流れ・ローダの置き場所）。
+- 詳細解説＝`docs/notes/2026-06-25-n03-ingest.md`（投入工程・シェープ・SRID）／`docs/notes/2026-06-25-n03-ingest-path.md`（登場人物・流れ・ローダの置き場所）／`docs/notes/2026-06-25-n03-impl-building-blocks.md`（Go依存・シェル・使い捨てコンテナの作法）。
 
 ## §6 以降（今後追記）
 
