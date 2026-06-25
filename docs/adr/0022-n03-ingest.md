@@ -29,4 +29,5 @@
 - 段0 の実機確認で **`postgis/postgis:16-3.4` に `shp2pgsql`/`ogr2ogr` は非同梱**と判明（拡張＋SQLスクリプトのみ・ローダ binary は別パッケージ：`shp2pgsql`＝Debian `postgis`／`ogr2ogr`＝`gdal-bin`）。本ADRの「`shp2pgsql`＝PostGIS同梱＝ゼロ追加」前提は崩れた。
 - **ハイブリッド（投入と正規化を分ける）判断そのものは有効**。変わるのは「ローダ binary をどう調達するか」だけ。
 - 調達の選択（a: ローダを足したカスタム/別 ingest イメージ／b: 投入時だけ別 client イメージ／c: `ogr2ogr` へ寄せる）は **`docs/99`「N03 投入経路の確定」で段1着手時に決定**し、本ADR・`backend-conventions` §5 を更新する。
+- **→ `ADR-0023` で確定（2026-06-25）**：置き場所＝使い捨ての別コンテナ（GDAL 公式イメージ `ghcr.io/osgeo/gdal`・案A）／ローダ＝`ogr2ogr`。b と c を合わせた形（別 client イメージ＝GDAL 公式、その中の `ogr2ogr` を使う）。a（DB イメージに同居）は攻撃面・再現性で却下。
 - なぜ事前に分からなかったか＝「shp2pgsql は PostGIS に付属」という一般知識を、**特定の docker イメージで検証せず断定**したため（`docs/ai-feedback.md` F-001 の同型）。F-001 の「実装時に確認」但し書きが段0で機能し、段1で依存する前に捕捉できた。
