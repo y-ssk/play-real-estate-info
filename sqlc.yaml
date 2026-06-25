@@ -1,0 +1,17 @@
+# sqlc 設定（ADR-0017 既定＝sqlc／backend-conventions §1）。
+# 生成は host にツールを入れず docker で回す（make sqlc-generate・migrate と同じ host 無依存思想）。
+#
+# schema は migrations の up のみを参照する：sqlc はファイルをアルファベット順に DDL として読むため、
+# down（DROP）を混ぜると先に DROP が走って後続の参照が壊れる。up だけに限定して権威スキーマを与える。
+# queries は internal/store/queries。生成物は internal/store（pgx/v5・コミットする）。
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations/*.up.sql"
+    queries: "internal/store/queries"
+    gen:
+      go:
+        package: "store"
+        out: "internal/store"
+        sql_package: "pgx/v5"
+        emit_json_tags: true

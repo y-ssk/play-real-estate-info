@@ -7,6 +7,8 @@
 
 # golang-migrate を host へ入れず Docker で回す（再現性・ホスト無依存）。
 MIGRATE_IMAGE ?= migrate/migrate:v4.18.1
+# sqlc も host へ入れず Docker で回す（migrate と同じ思想・ADR-0017）。生成物はコミットする。
+SQLC_IMAGE ?= sqlc/sqlc:1.27.0
 PNPM ?= pnpm --dir web
 
 # DB 接続文字列を環境変数から組み立てる（compose と同じ POSTGRES_* を参照）。
@@ -23,7 +25,7 @@ DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POS
 N03_YEAR ?= 2023
 N03_PREF ?= 13
 
-.PHONY: help dev dev-api dev-web db-up db-down migrate migrate-down fetch-n03 ingest-n03 lint lint-go lint-web test test-go test-web build build-web fe-install
+.PHONY: help dev dev-api dev-web db-up db-down migrate migrate-down sqlc-generate fetch-n03 ingest-n03 lint lint-go lint-web test test-go test-web build build-web fe-install
 
 help: ## このヘルプを表示
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -57,6 +59,12 @@ migrate-down: ## 直近の1マイグレーションを戻す
 	@docker run --rm --network=host \
 		-v $(CURDIR)/migrations:/migrations $(MIGRATE_IMAGE) \
 		-path=/migrations -database "$(DATABASE_URL)" down 1
+
+# sqlc 生成＝queries の SQL から型安全な Go コードを起こす（internal/store・コミットする）。
+# DB 接続は不要（schema=migrations の up・queries を静的解析するだけ）。リポジトリ全体をマウントし
+# 作業ディレクトリを合わせて sqlc.yaml を読ませる。生成後は go build / go test で取り込みを確かめる。
+sqlc-generate: ## sqlc でクエリから Go コードを生成（要 Docker・生成物はコミット）
+	docker run --rm -v $(CURDIR):/src -w /src $(SQLC_IMAGE) generate
 
 ## --- N03 境界の取得・投入（ADR-0024・backend-conventions §5.1・手順は docs/runbooks/n03-ingest.md）---
 # 取得＝直リンクで落として data/n03/{YEAR}/{PREF}/ へ展開（年度・都県は N03_YEAR/N03_PREF で上書き可）。
