@@ -19,13 +19,16 @@ services:
     volumes:
       - machilens-db-data:/var/lib/postgresql/data
     healthcheck:
-      # migrate を流す前に DB が受け付ける状態かを待てるようにする（make migrate が依存）。
-      # 認証情報を二重に持たないよう、コンテナ内へ渡る $POSTGRES_USER/$POSTGRES_DB を参照する
-      # （compose の $ エスケープのため $$ で書く＝コンテナ内シェルで展開させる）。
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      # migrate を流す前に DB が「TCPで」受け付ける状態かを待つ（make migrate が依存）。
+      # -h 127.0.0.1 -p 5432 で TCP を明示＝初回（空ボリューム）初期化中の socket 限定一時サーバでは
+      # healthy にせず、本サーバが TCP を開いてから healthy にする。これが無い（socket 判定）と
+      # 初期化途中で early-healthy になり、直後の migrate が connection reset を食う初回競合が起きる。
+      # $$ は compose の $ エスケープ＝コンテナ内シェルで $POSTGRES_USER/$POSTGRES_DB を展開。
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 3s
       timeout: 3s
       retries: 10
+      start_period: 10s
 
 volumes:
   machilens-db-data:
