@@ -42,13 +42,14 @@ db-up: ## PostGIS コンテナを起動（healthy まで待つ）
 db-down: ## PostGIS コンテナを停止（データは保持）
 	docker compose stop db
 
+# migrate/migrate-down の実行行は @ で echo 抑制＝接続文字列（パスワード込み）を端末・履歴に出さない。
 migrate: ## migrations を適用（PostGIS 拡張＋空の admin_unit）
-	docker run --rm --network=host \
+	@docker run --rm --network=host \
 		-v $(CURDIR)/migrations:/migrations $(MIGRATE_IMAGE) \
 		-path=/migrations -database "$(DATABASE_URL)" up
 
 migrate-down: ## 直近の1マイグレーションを戻す
-	docker run --rm --network=host \
+	@docker run --rm --network=host \
 		-v $(CURDIR)/migrations:/migrations $(MIGRATE_IMAGE) \
 		-path=/migrations -database "$(DATABASE_URL)" down 1
 
