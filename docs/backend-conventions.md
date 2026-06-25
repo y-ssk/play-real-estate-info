@@ -106,7 +106,15 @@
   ```
   文字コードは `.dbf` 確認後に `--config SHAPE_ENCODING <CP932 等>` を付す。`shp2pgsql` は専用イメージが乏しく自作の手間ゆえ採らない（`ADR-0023`。将来固有の事情が出れば継ぎ目で可逆）。
 - **取得＝低頻度（年1回）**：直リンクの取得スクリプト（年度・都県をパラメータ）で半自動。完全自動化しない。
-- **実装時に実物で確認**（憶測しない）：GDAL 公式イメージの `ogr2ogr` 同梱（`docker run --rm ghcr.io/osgeo/gdal ogr2ogr --version`）・`.prj` の座標系（→6668 変換要否）・`.dbf` の文字コード。
+- **実装時に実物で確認**（憶測しない）：GDAL 公式イメージの `ogr2ogr` 同梱（`docker run --rm ghcr.io/osgeo/gdal ogr2ogr --version`）・`.prj` の座標系（→6668 変換要否）・`.dbf` の文字コード。**東京都(13)・令和5年版で確認済**＝座標系 `GCS_JGD_2011`＝EPSG:6668（保存目標と一致・再投影不要／.prj は Esri WKT名ゆえ `-a_srs EPSG:6668` で付与）・文字コード CP932・`N03_007` は5桁文字列・同梱の `.geojson` は UTF-8 で EPSG:6668 を自己宣言（入力候補）。
+
+### §5.1 運用形態（`ADR-0024`）
+- **実行手段＝薄いscript＋Makefile入口**：`scripts/ingest-n03.sh`（GDAL公式イメージを `docker run --rm --network=host` で呼ぶ薄いラッパ）／入口 `make ingest-n03`（`make migrate` と同じ流儀＝env駆動・`@`echo抑制・`source ~/.config/config.env`）。取得は対の `scripts/fetch-n03.sh`。**手打ち `docker run` は禁止**（再現性ゼロ）。
+- **正規化＝Go（`cmd/ingest`）に持つ**（本丸・層1検証対象。`ADR-0017`）。`n03_raw`（生・無加工）→ `admin_unit`（5桁集約・年度固定・値域）。psql で SQL を流す案は層1をテストで守れず却下。
+- **データ配置規約＝`data/n03/{YEAR}/{PREF}/`**：`fetch-n03.sh` がここに展開、`ingest-n03.sh` はここから読む（path は YEAR/PREF で一意）。`temp/` は使わない（配置を一本化＝再現性）。`data/` は `.gitignore`。
+- **冪等性**（ETL要件）：`n03_raw` は投入前に `DROP`/`TRUNCATE`、`admin_unit` は**都県単位**（コード上2桁=PREF）で `DELETE`→`INSERT`。何度流しても同結果。
+- **死守**：AIは `config.env` 不可触（触るのは script ファイルのみ）・**起動はオーナーの対話シェル**・パスワードは `PGPASSWORD` 経由（接続文字列に埋めない）＋echo抑制で端末/`ps`/履歴に出さない。
+- **手順書＝`docs/runbooks/n03-ingest.md`**（運用手順 runbook・実装時に作成）。README はローカルセットアップに導線1行。
 - 詳細解説＝`docs/notes/2026-06-25-n03-ingest.md`（投入工程・シェープ・SRID）／`docs/notes/2026-06-25-n03-ingest-path.md`（登場人物・流れ・ローダの置き場所）。
 
 ## §6 以降（今後追記）

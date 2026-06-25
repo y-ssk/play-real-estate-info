@@ -109,6 +109,7 @@
 | パッケージ管理・Node版（足場） | **pnpm**（Node同梱`corepack`で版固定＝`package.json`の`packageManager`欄）。採用根拠は速さでなく**幽霊依存（宣言してない間接依存をimportできる罠）を構造的に弾く堅牢性**。npmは平坦`node_modules`で幽霊依存を許す/corepackで優位消滅・yarnは却下。**Node版＝`.nvmrc`＋`engines`**（現行LTS・最新LTSは実装時に公式確認）。お作法＝`frontend-conventions`§11 | `ADR-0021` `frontend-conventions`§11 `notes/2026-06-25-package-managers` |
 | N03境界の投入機構（足場/ETL入口） | **ハイブリッド**＝投入(シェープ→PostGIS=機械的)は**外部ローダ**／正規化(5桁コード化・年度固定・値域=本丸)は**SQL・Go**(継ぎ目=投入ツール非依存)。取得=年1回低頻度ゆえ直リンクscriptで半自動。Go全実装は周辺過剰で却下。お作法＝`backend-conventions`§5 | `ADR-0022` `backend-conventions`§5 `ADR-0014` `notes/2026-06-25-n03-ingest` |
 | N03投入経路（ローダの調達・実行経路） | **使い捨ての別コンテナ＝案A**：投入時だけ GDAL公式イメージ`ghcr.io/osgeo/gdal`から`docker run --rm`で立て→同一network越しにDBへ→終了後破棄。**DBイメージは公式のまま改変しない**(攻撃面最小・再現性・役割分離)。**ローダ＝`ogr2ogr`**(GDAL公式に同梱で入手素直・N03はシェープゆえ十分)。案B(DBイメージ同居)/案C(端末直)は却下。継ぎ目ゆえ可逆。実物確認(イメージ中身・`.prj`/`.dbf`)は投入実装時 | `ADR-0023` `ADR-0022` `backend-conventions`§5 `notes/2026-06-25-n03-ingest-path` |
+| N03投入の運用形態（再現可能にどう回すか） | **薄いscript＋Makefile入口**(`scripts/ingest-n03.sh`＝GDAL公式を`docker run --rm --network=host`／入口`make ingest-n03`＝migrate流儀・env駆動・echo抑制・`source config.env`)。**正規化＝Go`cmd/ingest`**(本丸・層1テスト)・`n03_raw`中継。**配置規約＝`data/n03/{YEAR}/{PREF}/`**(fetchで展開・ingestはそこから読む・`temp/`廃止・`data/`はgitignore)。**冪等＝都県単位DELETE→INSERT**。**手順書＝`docs/runbooks/n03-ingest.md`新設**(README導線1行)。手打ち/psql正規化/compose即サービス化は却下/保留。死守＝AIはconfig.env不可触・起動はオーナー・パスワード非露出 | `ADR-0024` `ADR-0023` `backend-conventions`§5.1 `CLAUDE.md`地図 |
 
 ---
 
@@ -160,6 +161,7 @@
 | ~~PostGIS↔Goアクセス方式（クエリ層）~~ | ✅確定（`ADR-0017`・優先3-2）＝pgx＋sqlc既定＋生SQL例外のハイブリッド。お作法は生きた文書`docs/backend-conventions.md`§1。残件（geometry型override・縦持ち動的絞り込みの具体SQL）はBE実装着手時 |
 | ~~N03（行政区域）のロード機構・取得自動化~~ | ✅確定（`ADR-0022`・足場/ETL入口）＝**ハイブリッド**（投入=`shp2pgsql`同梱・正規化=SQL/Go・取得=低頻度直リンクscript）。形式変更/複雑な再投影時のみ`ogr2ogr`へ。お作法＝`backend-conventions`§5。**残件＝実ファイルの`.prj`/文字コード確認は実装時**。`shp2pgsql`のimage同梱確認は段0で実施済み＝**非同梱と判明**（下行「N03 投入経路の確定」へ） |
 | ~~N03 投入経路の確定（`shp2pgsql` がイメージ非同梱の判明を受けて）~~ | ✅確定（`ADR-0023`）＝**使い捨ての別コンテナ（案A）＋ローダ `ogr2ogr`**（GDAL公式イメージ`ghcr.io/osgeo/gdal`を`docker run --rm`、DBイメージは公式のまま改変しない）。案A（≒旧b＋c）採用・案B（DBイメージ同居=旧a）/案C（端末直）却下。お作法＝`backend-conventions`§5 更新済・`ADR-0022` 追記済。**残件＝実ファイルの`.prj`座標系/`.dbf`文字コード・イメージ中身は投入実装時に1コマンド確認**（憶測しない） |
+| N03投入を compose の `profiles` でサービス化（宣言的な格上げ） | **トリガー＝投入の段取りが増え/宣言的に束ねたくなった時**。現状は薄いscript＋Make入口（`ADR-0024`）。compose `--profile ingest run` 化は使い捨てコンテナを宣言的に表現できるが、手続き的な一回処理には過剰・env解決は同じゆえ今は採らない。継ぎ目の外（運用層）なので可逆 |
 | N03 複製の法務（国土地理院長の承認注記） | 公開検討時。N03原典=国土地理院『数値地図(国土基本情報)』で「複製時に承認が必要」の注記あり。出典表示義務（下記MLIT行）と併せて確認 |
 | ~~API設計方針（REST粒度／タイルとデータの分離）~~ | ✅確定（`ADR-0016`・優先3-1）＝値とジオメトリ分離(継ぎ目)・初手GeoJSON→行き先ベクタタイル(一体型`ST_AsMVT`)。エンドポイント最終粒度は3-2／実装着手時に詰める |
 | 各MLIT APIのIF定義・形式・パラメータの最終確認 | 各エンドポイント実装時（公式マニュアル＋IF定義を必ず確認。憶測でクライアントを書かない）。仕組み: `docs/api-if-spec/` に1API1ファイルで転記（`_TEMPLATE.md` を複製） |
