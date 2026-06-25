@@ -11,7 +11,7 @@ import (
 
 const listMunicipalityGeometry = `-- name: ListMunicipalityGeometry :many
 
-SELECT code, name, ST_AsGeoJSON(geom)::text AS geojson
+SELECT code, name, ST_AsGeoJSON(ST_Transform(geom, 4326))::text AS geojson
 FROM admin_unit
 WHERE unit_kind = 'municipality'
 ORDER BY code
@@ -24,9 +24,12 @@ type ListMunicipalityGeometryRow struct {
 }
 
 // 色分け配信（ADR-0016 初手＝ST_AsGeoJSON）の形クエリ。値は別経路ゆえここは形だけ。
-// ST_AsGeoJSON(geom)::text はテキストを返す（geometry 型の特別扱い不要）。FeatureCollection の
+// ST_AsGeoJSON(...)::text はテキストを返す（geometry 型の特別扱い不要）。FeatureCollection の
 // 組み立ては Go 側で行い、geojson 列は生 JSON としてそのまま埋める（二重エンコードしない・handler）。
 // 静的クエリゆえ sqlc 既定（backend-conventions §1.1）。
+// 保存は 6668（JGD2011）だが配信時に 4326 へ変換する：6668 のままだと ST_AsGeoJSON が非標準の crs
+// メンバ（EPSG:6668）を吐き、MapLibre 前提の RFC7946（4326・経度緯度・crs 無し）に反するため
+// （座標値は 6668 と 4326 で実質同値・ADR-0014「配信時に変換」/ ADR-0016）。
 func (q *Queries) ListMunicipalityGeometry(ctx context.Context) ([]ListMunicipalityGeometryRow, error) {
 	rows, err := q.db.Query(ctx, listMunicipalityGeometry)
 	if err != nil {
