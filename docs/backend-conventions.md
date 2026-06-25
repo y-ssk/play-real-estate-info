@@ -96,7 +96,7 @@
 ## §5 ETL／データ投入（境界 N03 など・根拠：`ADR-0022`）
 
 - **投入と正規化を分ける（継ぎ目）**：シェープ→PostGISテーブル化（機械的）＝外部ツール／5桁コード化・年度固定・値域チェック（本丸の結合基盤）＝**SQL・Go**。正規化は投入ツールに埋めない（ツールを替えても不変・`ADR-0015`）。
-- **投入ツール＝`shp2pgsql`（PostGIS 同梱）**。`-W CP932`（文字コード）・`-s`（SRID→6668・`ADR-0014`）・`-I`（GiST索引）。例 `shp2pgsql -s 6668 -I -W CP932 N03.shp n03_raw | psql "$DB_URL"`。
+- **投入ツール＝`shp2pgsql`**。`-W CP932`（文字コード）・`-s`（SRID→6668・`ADR-0014`）・`-I`（GiST索引）。例 `shp2pgsql -s 6668 -I -W CP932 N03.shp n03_raw | psql "$DB_URL"`。**⚠ `shp2pgsql`/`ogr2ogr` は `postgis/postgis` 公式imageに非同梱と段0判明**（別パッケージ：`postgis`／`gdal-bin`）。**ローダ調達は `docs/99`「N03 投入経路の確定」で段1決定**（カスタム/別ingestイメージ等）。
 - **`ogr2ogr`(GDAL) は寄せ先**：配布がシェープでなくなった／再投影が複雑なときだけ（多形式・PROJ）。常時依存にしない（可逆）。
 - **取得＝低頻度（年1回）**：直リンクの取得スクリプト（年度・都県をパラメータ）で半自動。完全自動化しない。
 - **実装時に実物で確認**（憶測しない）：`shp2pgsql` の image 同梱（`docker run --rm postgis/postgis which shp2pgsql`）・`.prj` の座標系・`.dbf` の文字コード。
