@@ -159,6 +159,8 @@ API制約とデータ品質を吸収する仕掛けを最初から組み込む�
 
 **API設計方針（色分け配信・`ADR-0016`で確定）**：**値とジオメトリを別経路に分離（継ぎ目）**＝形 `GET /api/choropleth/geometry`、値 `GET /api/choropleth/values?metric=<key>`（縦持ち`metric_value`を引く）、カルテ `GET /api/karte?unit=<5桁>`。FEは `setFeatureState` で5桁コード結合し色付け（色式は運び方に依らず共通）。**初手＝`ST_AsGeoJSON`＋geojson source**（最初のETL縦スライスはデータ正しさ＝層1を目視できる形で隔離）→ **行き先＝`ST_AsMVT` を本サーバ内ハンドラで＋vector source**（タイルは3857・§9）。タイルは自前`ST_AsMVT`で持ち、`pg_tileserv`/`martin`等の別プロセスは一体型に反するため不採用。
 
+**実装済み（段1③）**：形 `GET /api/choropleth/geometry`＝`admin_unit`（`unit_kind='municipality'`）を `ST_AsGeoJSON(ST_Transform(geom,4326))` で GeoJSON **FeatureCollection** として返す（値なし）。**配信 CRS＝4326（RFC7946 準拠）**：保存は 6668 だが配信時に 4326 へ変換（6668 のままだと非標準 `crs` メンバが付き MapLibre 前提の RFC7946 に反する・座標値は同値・`ADR-0014`「配信時に変換」）。各 feature は `id`＝5桁コード（FE の `setFeatureState` 結合キー）・`properties`＝`{code,name}`・`geometry`＝生 GeoJSON（二重エンコードしない）。SQL は sqlc（`internal/store`）、組み立ては `internal/handler`、ルート登録は `cmd/api`、接続プールは `internal/db`（`backend-conventions` §1.4/§1.8/§4）。簡略化（`ST_Simplify`）・都県絞り込み（`?pref=`）は未実装（行き先 A 差し替え時／多県化時に足す）。
+
 **クエリ層（`ADR-0017`で確定）**：**ハイブリッド**＝接続土台 `pgx`／既定 `sqlc`（静的クエリ多数を型安全に・PostGIS関数も書ける）／生SQLは名前のつく例外のみ（動的WHERE・大量投入`CopyFrom`・sqlc非対応構文）。ORM不採用。**実装/レビューのお作法（既定＋3例外・アンチ/デザインパターン・テスト粒度・レビュー5問・例外台帳）は生きた文書 `docs/backend-conventions.md` §1**（ADRは凍結記録で参照先にしない）。
 
 未確定（実装着手時に決定。`99_decision-register.md`）：

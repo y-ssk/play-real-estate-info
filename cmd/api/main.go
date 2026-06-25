@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"log"
@@ -13,7 +14,9 @@ import (
 	"os"
 
 	machilens "github.com/y-ssk/machilens"
+	"github.com/y-ssk/machilens/internal/db"
 	"github.com/y-ssk/machilens/internal/handler"
+	"github.com/y-ssk/machilens/internal/store"
 )
 
 func main() {
@@ -24,8 +27,16 @@ func main() {
 		addr = ":8080"
 	}
 
+	// 接続プールは起動時に作り到達性を確かめる（env 未設定・DB 未起動はここで分かりやすく落とす）。
+	// 失敗時のエラーには接続情報を載せない（db.NewPool の作法）。プロセス終了まで保持する。
+	pool, err := db.NewPool(context.Background())
+	if err != nil {
+		log.Fatalf("db init failed: %v", err)
+	}
+	defer pool.Close()
+
 	mux := http.NewServeMux()
-	registerRoutes(mux)
+	registerRoutes(mux, store.New(pool))
 
 	log.Printf("machilens api: listening on %s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
@@ -35,11 +46,13 @@ func main() {
 
 // registerRoutes は全ルートを1箇所で登録する（ADR-0020：ルート登録は起動側に集約）。
 //
-// 段0 のルートは2系統のみ：
+// ルート：
 //   - GET /api/health … 活性確認（handler 層）
+//   - GET /api/choropleth/geometry … 市区町村境界（GeoJSON FeatureCollection・値なし・ADR-0016）
 //   - GET /          … embed した FE 成果物を配信（本番のみ。開発は Rsbuild 開発サーバ）
-func registerRoutes(mux *http.ServeMux) {
+func registerRoutes(mux *http.ServeMux, queries *store.Queries) {
 	mux.Handle("GET /api/health", handler.Health())
+	mux.Handle("GET /api/choropleth/geometry", handler.Geometry(queries))
 
 	if fe, err := frontendHandler(); err != nil {
 		// FE 未ビルド（web/dist が空＝.gitkeep のみ）でも API は動くべきなので、

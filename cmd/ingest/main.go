@@ -18,6 +18,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/y-ssk/machilens/internal/db"
 	"github.com/y-ssk/machilens/internal/ingest"
 )
 
@@ -42,7 +43,7 @@ func run(year int, pref string) error {
 		return fmt.Errorf("-pref は2桁の都道府県コードを指定する（例: -pref=13）: 受領=%q", pref)
 	}
 
-	dsn, err := ingest.DSNFromEnv()
+	dsn, err := db.DSNFromEnv()
 	if err != nil {
 		return err
 	}
