@@ -72,6 +72,15 @@
 |---|---|---|
 | （まだ無し） | | |
 
+### 1.8 sqlc の実運用（生成の回し方・置き場・設定の要点）
+
+- **生成は Docker（`make sqlc-generate`）**＝host に sqlc を入れない（migrate と同じ host 無依存・再現性。`ADR-0017`）。`sqlc/sqlc` 公式イメージを `docker run --rm -v $(CURDIR):/src -w /src ... generate` で回す。DB 接続は不要（schema＝migrations の up・queries を静的解析するだけ）。
+- **設定＝リポジトリ直下 `sqlc.yaml`**（`version: "2"`・`engine: postgresql`・`sql_package: pgx/v5`・`emit_json_tags: true`）。
+  - **schema は `migrations/*.up.sql` のみ**を参照する。down（DROP）を混ぜると sqlc がアルファベット順に DDL を読む際に先に DROP が走り後続参照が壊れるため、up に限定する。
+  - **geometry 型 override は今は不要**：配信は `ST_AsGeoJSON(geom)::text`（text）経由で生 geometry 列を Scan しないため、型対応付けが要らない（クエリが生 geometry を返し始めたら `sqlc.yaml` に override を1箇所で足す＝§1.4）。
+- **クエリは `internal/store/queries/*.sql`**（`-- name: ...` 注釈つき）。**生成物は `internal/store/`（`db.go`・`models.go`・`<file>.sql.go`）でコミット**。`store.New(pool)` で `*store.Queries` を得てハンドラへ渡す（`*pgxpool.Pool` が `DBTX` を満たす）。
+- **接続プール＝`internal/db`**（`DSNFromEnv`／`NewPool`）に集約。手動側（`cmd/ingest`）と随時側（`cmd/api`）の双方が参照する共有土台で、`api → ingest` の不自然な依存を避ける。`NewPool` は起動時に `Ping` し env 未設定・DB 未起動をその場で落とす（エラーに接続情報を載せない）。
+
 ---
 
 ## §2 lint／整形（根拠：`docs/notes/2026-06-25-lint-formatter-tooling`）
