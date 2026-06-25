@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -177,30 +176,4 @@ func looksJapanese(s string) bool {
 		}
 	}
 	return false
-}
-
-// DSNFromEnv は POSTGRES_* から接続文字列を組み立てる（compose/Makefile と同一変数・backend-conventions §1）。
-//
-// なぜ環境変数からか：実値（特にパスワード）をリポジトリに置かない（config.env→環境変数の一本道）。
-// 未設定は即エラーにし握りつぶさない（compose の ${VAR:?} と同じ思想）。返す DSN にパスワードが入るため、
-// 呼び出し側は DSN をログ・エラーに載せないこと。
-func DSNFromEnv() (string, error) {
-	user := os.Getenv("POSTGRES_USER")
-	pass := os.Getenv("POSTGRES_PASSWORD")
-	db := os.Getenv("POSTGRES_DB")
-	if user == "" || pass == "" || db == "" {
-		return "", errors.New("POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB が未設定（~/.config/config.env を source する・README 参照）")
-	}
-	port := os.Getenv("POSTGRES_PORT")
-	if port == "" {
-		port = "5432"
-	}
-	host := os.Getenv("POSTGRES_HOST")
-	if host == "" {
-		// migrate と同じく host の localhost:PORT（compose が publish）。オーナーの対話シェルから実行する前提。
-		host = "localhost"
-	}
-	// pgx は key=value DSN を解釈する。パスワードに記号が入っても URL エンコード不要なこの形を使う。
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		host, port, user, pass, db), nil
 }
