@@ -44,6 +44,7 @@
 - `docs/00_claude-code-kickoff.md` … 立ち上げ手順（Step A〜E）
 - `docs/commit-pr-format.md` … コミット/PR 様式の入口（実体はスキル `commit-pr-format`）
 - `docs/records.md` … 記録様式(ADR・学習メモ)の入口（実体はスキル `record-format`。ADR=`docs/adr/`, 学習メモ=`docs/notes/`）
+- `docs/runbooks/` … 運用手順（手作業のパッチ適用的処理の手順書・第4の種別）。例 `n03-ingest.md`（N03投入）。**手作業の運用を回す時に参照**（`ADR-0024`）
 - `docs/api-if-spec/` … 各MLIT APIのIF定義集（1API1ファイル）。`_paste.md` に貼り→`/if-spec` で構造化。実装前に必ず確認
 - `prompts/` … セッション再開の仕組み。`_resume.template.md`(固定枠・tracked)＋`resume.md`(現在地・local)。再開=1行貼付で `resume.md` を読む、更新=スキル `/checkpoint`。権威は `docs/99`
 - `docs/ai-feedback.md` … オーケストレーター（私）のフィードバック・学習ログ（**仕様ではない・可視化用**）。状態主張は出典確認後、推測で断言しない等。私のメモリの鏡

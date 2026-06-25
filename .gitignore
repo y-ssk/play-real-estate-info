@@ -30,6 +30,10 @@ web/dist/*
 *.local
 CLAUDE.local.md
 
+# === N03等の生地理データ（大きいバイナリ・コミット禁止。取得は取得scriptで再現）===
+/temp/
+/data/
+
 # === IF定義 貼り付け用インボックス（生コピペの中間物・コミットしない）===
 docs/api-if-spec/_paste.md
 
