@@ -36,6 +36,7 @@
 ## ドキュメント地図（必要時に読む／`@import` はしない＝常時ロードを避ける）
 - `docs/01_project-overview-scope.md` … プロダクト概要・スコープ（やる/やらない/保留）
 - `docs/02_architecture.md` … アーキテクチャ・データ仕様（MLIT振り分け・ETL要件）
+- `docs/05_screens-and-flows.md` … 画面・機能・遷移（UX/情報設計の柱・全量マップE2）。機能一覧/画面一覧/遷移図/トップ=入口ハブ/画面別MVP割付。**UI実装の見取り図**（`ADR-0025` 外→内レンズ）
 - `docs/backend-conventions.md` … BE実装/レビューのお作法（生きた文書）。クエリ層・lint・テスト/カバレッジ・doc。**BE/ETL実装時・レビュー時に参照**（ADRは凍結の根拠・最新取り決めは本書）
 - `docs/frontend-conventions.md` … FE実装/レビューのお作法（生きた文書）。ディレクトリ/依存・型安全・状態・melta-ui使い方・出典欠損・doc・lint・テスト/カバレッジ・レビュー観点。**FE実装時・レビュー時に `DESIGN.md` と並べて参照**（視覚はDESIGN・実装は本書）
 - `DESIGN.md` … UI憲法（melta-ui取り込み＋固有差分）。FE役が最初に読む
