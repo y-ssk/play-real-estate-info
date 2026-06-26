@@ -131,3 +131,65 @@ export function choroplethFillLegend(min: number, max: number): FillLegendStop[]
  * 値域に依存しない「色の並び」だけが欲しい場面用（値域つきは {@link choroplethFillLegend}）。
  */
 export const CHOROPLETH_FILL_LEGEND = CHOROPLETH_FILL_RAMP;
+
+/**
+ * 発散（diverging）配色ランプ（DESIGN §1・色覚配慮）。
+ *
+ * 用途＝**符号付きの指標**（人口増減率など 0 を境に減少↔増加）。中央0を境に2色へ分かれ、「増えた/減った」が
+ * 一目で割れる。**青（浸水想定の慣例色）とコーラル（UI の操作色）を避ける**（DESIGN §1 データ色とUI色の分離）
+ * ため、ColorBrewer **PRGn**（紫↔緑・色覚配慮の発散系）を採る：減少側＝紫、中央≒0＝淡い中立、増加側＝緑。
+ * 緑は逐次ランプ（面積）でも使うが、発散の片側＋別画面（指標切替で同時に出ない）ゆえ衝突しない（タスク許容）。
+ * 5段（減少濃→…→中央→…→増加濃）。色順は固定で凡例（{@link divergingFillLegend}）と一致させる。
+ */
+export const CHOROPLETH_DIVERGING_RAMP = [
+  "#7b3294", // 強い減少（紫・濃）
+  "#c2a5cf", // 弱い減少（紫・淡）
+  "#f7f7f7", // 中央 ≒ 0%（中立・淡灰）
+  "#a6dba0", // 弱い増加（緑・淡）
+  "#008837", // 強い増加（緑・濃）
+] as const;
+
+/**
+ * divergingFillColor は **0 を視覚中心**に固定した発散配色式を返す（中央のランプ色が値0に当たる）。
+ *
+ * なぜ対称ドメインか：発散配色は「0 が中央色」でないと増減の境がずれて誤読する。データの min/max を
+ * そのまま使うと中点がデータ依存になり 0 が中央に来ない。よって `bound = max(|min|,|max|)` で domain を
+ * `[-bound, +bound]` の対称区間にし、`-bound, -bound/2, 0, +bound/2, +bound` を5段へ線形補間する
+ * ＝0 が必ず中央のランプ色（中立）に当たる。値が無い feature の色抜きは fill-opacity 側で行う（§3）。
+ *
+ * @param min 値域の下限（負を含みうる）。
+ * @param max 値域の上限。
+ */
+export function divergingFillColor(min: number, max: number): FillColor {
+  const bound = divergingBound(min, max);
+  const stops = CHOROPLETH_DIVERGING_RAMP.flatMap((color, i) => {
+    // i=0→-bound, i=2→0, i=4→+bound（中央を0に固定）。
+    const t = i / (CHOROPLETH_DIVERGING_RAMP.length - 1); // 0..1
+    const value = -bound + 2 * bound * t;
+    return [value, color];
+  });
+  return ["interpolate", ["linear"], ["feature-state", "value"], ...stops] as FillColor;
+}
+
+/**
+ * divergingFillLegend は発散凡例の段（色＋下限値）を返す（地図の色式と同じ stops＝必ず一致・0 中央）。
+ *
+ * @param min 値域の下限。
+ * @param max 値域の上限。
+ */
+export function divergingFillLegend(min: number, max: number): FillLegendStop[] {
+  const bound = divergingBound(min, max);
+  return CHOROPLETH_DIVERGING_RAMP.map((color, i) => {
+    const t = i / (CHOROPLETH_DIVERGING_RAMP.length - 1);
+    return { color, lowerBound: -bound + 2 * bound * t };
+  });
+}
+
+/**
+ * divergingBound は発散配色の対称ドメイン半径 `max(|min|,|max|)` を返す。
+ * 全単位同値・0 のみ等で 0 になる退化を避け、最低限の幅を確保する（interpolate のゼロ幅潰れ防止）。
+ */
+function divergingBound(min: number, max: number): number {
+  const b = Math.max(Math.abs(min), Math.abs(max));
+  return b > 0 ? b : 1;
+}
