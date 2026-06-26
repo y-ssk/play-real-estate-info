@@ -144,6 +144,16 @@
 - **指標投入＝`cmd/ingest -metric=<key>`**（取得・鍵不要で完結する派生指標の経路）。**冪等＝指標単位 `DELETE WHERE metric=$1`→`INSERT`**（pref 単位の N03 正規化とは別の冪等境界）。投入後に**層1事後チェック**（件数>0・値域：負/0・桁外れ・present なのに NULL なし）を tx 内で行い、失敗はロールバック。面積（`area_km2`）が最初の実装＝`internal/ingest/metric_area.go`。件数が数百で `CopyFrom` を要さないため `INSERT...SELECT`（pgx 直）。大量投入（実 ETL）では §1.1 例外2＝`CopyFrom` を使う。
 - **値配信の応答形＝`[{code, value, status}]`**（`setFeatureState` 向け）。**`value` は null 可ゆえ Go では `*float64`**（`pgtype.Float8.Valid` を見て nil/値に変換）＝JSON で `null`/数値が出て FE が status と合わせて色抜きを判定できる。組み立ては純関数 `buildMetricValues` に切り出し DB 非依存で層1テスト（`internal/handler/values.go`）。クエリは sqlc 既定 `ListMetricValues`（`(metric, unit_kind)` 引数・unit_kind 引数化はメッシュ移行の継ぎ目 `ADR-0015`）。`metric` 未指定は 400。
 
+### §5.3 タイル取得型の指標投入（XKT013 将来人口・根拠：`ADR-0009`/`0011`/`0014`/`0015`）
+面積（admin_unit からの算出）と違い、**MLIT のタイル配信から取得したファイル群を集計して `metric_value` に書く**型。最初の実装＝将来人口増減率（`pop_change_rate_2020_2050`・`internal/ingest/metric_pop_change.go`）。
+- **取得と集計を分ける継ぎ目**：取得＝`scripts/fetch-xkt013.sh`（self-source・鍵はヘッダ・`data/xkt013/{vintage}/{pref}/z{z}_{x}_{y}.geojson` へ保存・冪等・レート制御）。集計＝Go（`cmd/ingest -metric=pop_change_rate_2020_2050 -data=<dir>`）。fetch は薄く「取得・保存」だけ、SHICODE 集計・重複排除は Go が担う（取得ツールに集計を埋めない）。**鍵は値を端末/`ps`/履歴/ログに出さない**＝curl の `--config`（一時ファイル）でヘッダを渡す（引数に展開しない）。
+- **タイルスイープ範囲はコメントで算出根拠を明記**：東京本土＝z11 グリッド x=[1814..1819] y=[804..807]＝24枚（緯度35.46〜36.03N・経度138.87〜139.92E を覆い東京本土を包含）。**島嶼は当面対象外＝データなし扱い**（後続で別グリッド）。タイルは隣県へはみ出す。
+- **ストリーム抽出（巨大ファイル対策）**：1タイル ~29MB・1メッシュ数百項目ゆえ全件 Unmarshal せず、`json.Decoder` のトークンで `features` 配列へ降り（`seekToFeaturesArray`・properties 並び順不定に頑健）、要素を1つずつ `Decode` して**必要4キー（`MESH_ID`/`SHICODE`/`PTN_2020`/`PTN_2050`）だけ**を持つ部分構造体に写す（他キー・geometry は Decode が読み捨て）。ファイルは1枚ずつ開いて閉じる（ハンドル・メモリを溜めない）。
+- **年次は `PTN`（秘匿なし生値・全年そろう）**：`PT00` は無い年があり PTN との差は最大数人で無害（偵察で確認）。
+- **重複排除＝`MESH_ID`**（隣接タイルで同一メッシュが重複）。**県内フィルタ＝SHICODE 上2桁=`13`**（はみ出す隣県メッシュを捨てる・`ADR-0014` 値域）。**集計＝SHICODE ごとに ΣPTN_2050/ΣPTN_2020−1**（空間結合不要＝メッシュに SHICODE が付くため・`ADR-0015` の重心法を要さない特例）。
+- **`status` の割り当て**：率が出る＝`present`／**ΣPTN_2020=0（分母0・0除算回避）と未取得（島嶼等）＝`none`**（`ADR-0011`。メッシュ秘匿 `suppressed` とは区別＝こちらは分母不在）。**FK 担保＝admin_unit に在る SHICODE のみ INSERT**、admin_unit にあって集計に無い東京の単位は `none` で埋める（母集合を admin_unit に揃える）。`year`＝推計到達年 2050（面積の year NULL と違い版の意味を持つ）。出典に**「推計(2020→2050)」を明記**（`ADR-0009` 断定しない）。
+- **層1の二段**：(1) **純関数テスト**（DB非依存）＝固定サンプルメッシュで「4キー抽出・上2桁13フィルタ・MESH_ID 重複排除・増減率・分母0=none・FeatureCollection 取り違え拒否」（`metric_pop_change_test.go`）。(2) **実行後アサート**（tx 内・失敗でロールバック）＝件数>0・present>0・全 unit_id 上2桁13・status/value 整合・率の値域(-1<率≤10)・**サンプル千代田(13101)が偵察値+15%近傍**。
+
 ## §6 以降（今後追記）
 
 > 誤り処理・ロギング/可観測性・トランザクション境界・レート制御の作法など、BE共通のお作法が出たら本書に章を足す（同じ器に集約し、文書の乱立を防ぐ）。
