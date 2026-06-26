@@ -25,7 +25,7 @@ DATABASE_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POS
 N03_YEAR ?= 2023
 N03_PREF ?= 13
 
-.PHONY: help dev dev-api dev-web db-up db-down migrate migrate-down sqlc-generate fetch-n03 ingest-n03 lint lint-go lint-web test test-go test-web build build-web fe-install
+.PHONY: help dev dev-api dev-web db-up db-down migrate migrate-down sqlc-generate fetch-n03 ingest-n03 fetch-xkt015 lint lint-go lint-web test test-go test-web build build-web fe-install
 
 help: ## このヘルプを表示
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -78,6 +78,12 @@ fetch-n03: ## N03 を取得して配置（既定: 令和5年版・東京都。�
 # 継承＝対話/非対話どのシェルから呼んでも同じに動く）。パスワードは PGPASSWORD 経由・接続文字列は端末に出さない。
 ingest-n03: ## N03 を投入し正規化（要 DB 起動・source config.env。例 make ingest-n03 N03_YEAR=2023 N03_PREF=13）
 	@scripts/ingest-n03.sh $(N03_YEAR) $(N03_PREF)
+
+## --- XKT015 駅別乗降客数の取得（ADR-0007・要 MLIT_API_KEY・集計は go run ./cmd/ingest -metric=...）---
+# 取得＝z=11 タイル群を data/xkt015/{YEAR}/{PREF}/ へ保存（鍵はヘッダ・値は出さない）。@ で echo 抑制。
+# 集計（市区町村合計）は別工程：make ingest-n03 後に go run ./cmd/ingest -metric=station_passengers_2023。
+fetch-xkt015: ## XKT015 タイルを取得して配置（要 MLIT_API_KEY・source config.env。既定 2023・東京13）
+	@scripts/fetch-xkt015.sh
 
 ## --- 検証 ---
 lint: lint-go lint-web ## Go と FE の lint

@@ -16,9 +16,6 @@ const OUTLINE_LAYER_ID = "choropleth-outline";
 /** 面塗りレイヤーの id（輪郭線より下＝線を塗りで隠さない）。 */
 const FILL_LAYER_ID = "choropleth-fill";
 
-/** 実証スライス（2a）の対象指標。面積（取得・鍵不要・既存 geom から算出）。 */
-const METRIC = "area_km2";
-
 /**
  * 輪郭線のスタイル。色・太さは生値直書きせず用途トークン経由（DESIGN §4）。
  * 面塗りを足した後も輪郭線は残す（区界を読ませる線・タスク死守）。
@@ -60,11 +57,15 @@ function buildFillLayer(min: number, max: number): FillLayer {
  * setFeatureState は描画の鏡・frontend-conventions §3）。**形と値が両方そろってから state を張る**
  * （順序：source 描画前に setFeatureState すると無視されるため、geometry 取得後に値を流す）。
  * データなし（status none/suppressed、value=null）は塗らない＝色抜き（ADR-0011）。
+ *
+ * @param metric 表示する指標キー（値API ?metric=・metrics.ts の key と一致）。指標切替（2b）で
+ *   app 層から渡し、metric が変わると useChoroplethValues のキャッシュが分かれ、下の useEffect が
+ *   前指標の feature-state を removeFeatureState で消してから張り直す（前指標の値の持ち越し防止）。
  */
-export function ChoroplethLayer() {
+export function ChoroplethLayer({ metric }: { metric: string }) {
   const { current: map } = useMap();
   const { data: geometry } = useChoroplethGeometry();
-  const { data: values } = useChoroplethValues(METRIC);
+  const { data: values } = useChoroplethValues(metric);
 
   // 値域 [min,max]：present かつ value!=null（数値）の値だけから取る。
   // データなし/秘匿（null）と該当なし0 の扱い：0 は present の数値ゆえ値域に含む（最小が0になりうる）。
@@ -95,6 +96,8 @@ export function ChoroplethLayer() {
         m.setFeatureState({ source: SOURCE_ID, id: v.code }, { value: v.value, present: true });
       }
     }
+    // 依存は values で十分：metric が変わると useChoroplethValues のキャッシュキーが分かれ values が差し替わる
+    // ＝この effect が再実行され、前指標を removeFeatureState で消してから張り直す（取り違え防止）。
   }, [map, geometry, values]);
 
   // 取得前・失敗時は Source を出さない（基図のみで壊れない・タスクのローディング方針）。
@@ -115,5 +118,3 @@ export function ChoroplethLayer() {
     </Source>
   );
 }
-
-export { METRIC as CHOROPLETH_METRIC };

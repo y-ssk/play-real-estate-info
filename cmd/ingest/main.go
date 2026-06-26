@@ -27,14 +27,16 @@ func main() {
 	// （年度は admin_unit の行には持たず「どの版を投入したか」の運用上の固定＝ADR-0024）。
 	year := flag.Int("year", 0, "国土数値情報 N03 の年度（例: 2023）")
 	pref := flag.String("pref", "", "対象都道府県コード（2桁・例: 13）")
-	// -metric を指定すると指標投入モード（取得・鍵不要・DB 接続のみ）。N03 正規化とは別経路。
-	// 現状の対応指標は area_km2（市区町村面積・admin_unit から算出）のみ。
-	metric := flag.String("metric", "", "投入する指標キー（例: area_km2）。指定時は指標投入モード（year/pref 不要）")
+	// -metric を指定すると指標投入モード（DB 接続必須）。N03 正規化とは別経路。
+	// 対応指標：area_km2（admin_unit から算出・取得/鍵不要）／station_passengers_2023（XKT015 タイル集計）。
+	metric := flag.String("metric", "", "投入する指標キー（例: area_km2 / station_passengers_2023）。指定時は指標投入モード")
+	// station_passengers_2023 が読むタイル配置（取得スクリプトの配置規約）。既定は段1 対象（2023・東京13）。
+	xkt015Dir := flag.String("xkt015-dir", "data/xkt015/2023/13", "XKT015 タイルの配置（station_passengers_2023 用）")
 	flag.Parse()
 
-	// モード分岐：-metric があれば指標投入（鍵不要・全単位一括）、無ければ従来の N03 正規化。
+	// モード分岐：-metric があれば指標投入（全単位一括）、無ければ従来の N03 正規化。
 	if *metric != "" {
-		if err := runMetric(*metric); err != nil {
+		if err := runMetric(*metric, *xkt015Dir); err != nil {
 			log.Fatalf("ingest: %v", err)
 		}
 		return
@@ -45,17 +47,18 @@ func main() {
 	}
 }
 
-// runMetric は指標投入モードの本体（取得・鍵不要・DB 接続のみ・ADR-0015 の「値の道」実証）。
+// runMetric は指標投入モードの本体（ADR-0015 縦持ち集計の書き手・metric_value→/values→面塗りの源）。
 //
-// 面積（area_km2）は admin_unit の境界から算出する派生指標ゆえ MLIT API も鍵も不要で、
-// metric_value→/values→setFeatureState→面塗りの継ぎ目を取得の不確実性なしに通すための指標。
-func runMetric(metric string) error {
+//   - area_km2：admin_unit の境界から算出する派生指標（MLIT API も鍵も不要・DB 接続のみ）。
+//   - station_passengers_2023：XKT015 タイル（取得は fetch-xkt015.sh が済ませた前提）を集計する本丸 ETL。
+//     重複コード=1 の線分の代表点を市区町村へ内包割付し S12_057 を合計（ADR-0007・偵察の層1ルール）。
+func runMetric(metric, xkt015Dir string) error {
 	dsn, err := db.DSNFromEnv()
 	if err != nil {
 		return err
 	}
 
-	// 算出は ST_Area の集計で数百件ゆえ短時間だが、止まったら気づけるよう上限を置く（Ctrl-C でも中断可）。
+	// 集計は数百〜数千件ゆえ短時間だが、止まったら気づけるよう上限を置く（Ctrl-C でも中断可）。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -70,8 +73,16 @@ func runMetric(metric string) error {
 		log.Printf("ingest: 指標投入完了 metric=%s 投入件数=%d 値域[min=%.3f max=%.3f]km²",
 			res.Metric, res.Inserted, res.MinValue, res.MaxValue)
 		return nil
+	case "station_passengers_2023":
+		res, err := ingest.ComputeStationPassengers2023(ctx, dsn, xkt015Dir)
+		if err != nil {
+			return err
+		}
+		log.Printf("ingest: 指標投入完了 metric=%s 投入件数=%d 値域[min=%.0f max=%.0f]人",
+			res.Metric, res.Inserted, res.MinValue, res.MaxValue)
+		return nil
 	default:
-		return fmt.Errorf("未対応の -metric=%q（対応: area_km2）", metric)
+		return fmt.Errorf("未対応の -metric=%q（対応: area_km2 / station_passengers_2023）", metric)
 	}
 }
 

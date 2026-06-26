@@ -144,6 +144,20 @@
 - **指標投入＝`cmd/ingest -metric=<key>`**（取得・鍵不要で完結する派生指標の経路）。**冪等＝指標単位 `DELETE WHERE metric=$1`→`INSERT`**（pref 単位の N03 正規化とは別の冪等境界）。投入後に**層1事後チェック**（件数>0・値域：負/0・桁外れ・present なのに NULL なし）を tx 内で行い、失敗はロールバック。面積（`area_km2`）が最初の実装＝`internal/ingest/metric_area.go`。件数が数百で `CopyFrom` を要さないため `INSERT...SELECT`（pgx 直）。大量投入（実 ETL）では §1.1 例外2＝`CopyFrom` を使う。
 - **値配信の応答形＝`[{code, value, status}]`**（`setFeatureState` 向け）。**`value` は null 可ゆえ Go では `*float64`**（`pgtype.Float8.Valid` を見て nil/値に変換）＝JSON で `null`/数値が出て FE が status と合わせて色抜きを判定できる。組み立ては純関数 `buildMetricValues` に切り出し DB 非依存で層1テスト（`internal/handler/values.go`）。クエリは sqlc 既定 `ListMetricValues`（`(metric, unit_kind)` 引数・unit_kind 引数化はメッシュ移行の継ぎ目 `ADR-0015`）。`metric` 未指定は 400。
 
+### §5.3 タイル配信 API の取得・集計（XKT015 駅別乗降客数・根拠：`ADR-0007`/`0015`/`0011`/`docs/api-if-spec/XKT015`）
+> N03（直リンク ZIP）と違い、XKT015 は **XYZ タイル方式の API**（鍵が要る）。取得と集計をここに足す（生きた文書）。
+- **取得＝`scripts/fetch-xkt015.sh`＋入口 `make fetch-xkt015`**（`fetch-n03.sh` と同じ流儀＝`source ~/.config/config.env`・`@`echo抑制）。鍵は**ヘッダ `Ocp-Apim-Subscription-Key`（値は表示/ログ/コミットに出さない）**。`response_format=geojson&z=11&x&y` で z=11 タイルをスイープし `data/xkt015/{YEAR}/{PREF}/z11_{x}_{y}.geojson` へ保存（`data/` は `.gitignore`）。**東京本土の z11 タイル範囲＝x 1814..1820・y 804..807（28枚）**（bbox lon138.9–139.95/lat35.5–35.9 を GSI の XYZ 式 `x=⌊(lon+180)/360·2^z⌋`・`y=⌊(1−asinh(tan lat)/π)/2·2^z⌋` で算出。島嶼は駅が無いため除外）。レート制御＝タイル間に短い `sleep`。冪等＝同パス上書き（`.tmp`→`mv` で原子的）。`set -x` しない（鍵の展開防止）。
+- **集計＝`cmd/ingest -metric=station_passengers_2023`（`internal/ingest/metric_station_passengers.go`）**。層1ルール（**実データで確認済・憶測でなく従う**）：
+  - **2023年タグ＝重複コード `S12_054`／乗降客数 `S12_057`**（データ有無 `S12_055` は本集計では未使用）。コードは出力例で `"1.0"` 等の小数表記文字列ゆえ `codeToInt`/`jsonInt` で `"1.0"`・`"1"`・`1`・`1.0` を同値へ正規化（`internal/ingest/xkt015_props.go`）。
+  - **`S12_054=1` の線分のみカウント**（=2/3 は重複で乗降客数0扱い＝除外）。各駅（`S12_001g`）は複数線分を持ち、**別オペレータ/別路線の =1 線分は実カウントが別ゆえ合算してよい**（直通運転で同値が複数線に乗るが、除外するのは =2/3 の0重複だけ）。検証値＝上野(`003505`)=505392・押上(`003526`)=559147。
+  - **タイル跨ぎ重複排除＝属性の安定キー `S12_001g + S12_002_ja + S12_003_ja + S12_054`**（同一線分が隣接タイルに分割されても属性同一ゆえ1本に畳む。乗降客数は geometry でなく属性ゆえ断片ごとに同値＝二重計上の源）。
+  - **代表点＝LineString 中点（頂点列の中央 index・補間しない）**。これを `ST_SetSRID(ST_MakePoint(lon,lat),6668)` で点にし、`ST_Contains(admin_unit.geom, 点)` で**内包する市区町村へ割り付け**（点→内包＝`ADR-0015`）。端点でなく中点を選ぶのは越境での取り違えを避けるため。
+  - **市区町村ごとに `S12_057` 合計**→`metric_value`（metric=`station_passengers_2023`・year=2023・source=出典）。**駅の無い市区町村は該当なし＝0（value=0・status=present）**＝全 `admin_unit` に1行（`LEFT JOIN admin_unit` で母集合を担保・`ADR-0011`）。
+  - 線分の点投入は一時テーブル（`ON COMMIT DROP`）＋ `CopyFrom`（§1.1 例外2）→ 内包判定・合計は SQL（GIST 索引が効く）。冪等＝`DELETE WHERE metric=$1`→`INSERT`。
+  - **実行後アサート（層1・tx内）**：件数>0（全 `admin_unit`）／present なのに NULL 無し／負値無し／合計>0（=0 は内包判定不成立の兆候）／1市区町村が現実的上限（5e7）以下（二重計上の兆候 check）。
+  - **DB 非依存の純関数連鎖（`parseTileFeatures→dedupSegments→activeSegments`）を単体テスト**で固め、固定サンプル feature で上野=505392・押上=559147 を再現（`metric_station_passengers_test.go`）。空間結合（内包）は DB 依存ゆえアサートで担保。
+- **手順（オーナー実行）**：`make fetch-xkt015`（鍵要）→（境界未投入なら `make ingest-n03`）→ `go run ./cmd/ingest -metric=station_passengers_2023`（既定 `-xkt015-dir=data/xkt015/2023/13`）→ `/api/choropleth/values?metric=station_passengers_2023` で確認。
+
 ## §6 以降（今後追記）
 
 > 誤り処理・ロギング/可観測性・トランザクション境界・レート制御の作法など、BE共通のお作法が出たら本書に章を足す（同じ器に集約し、文書の乱立を防ぐ）。

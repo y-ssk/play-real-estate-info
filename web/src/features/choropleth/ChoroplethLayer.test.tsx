@@ -101,7 +101,7 @@ describe("ChoroplethLayer", () => {
   it("形と値がそろうと fill と line を構成し、present だけに setFeatureState する", async () => {
     stubFetch(sampleGeometry, sampleValues);
 
-    renderWithClient(<ChoroplethLayer />);
+    renderWithClient(<ChoroplethLayer metric="area_km2" />);
 
     // 面塗りレイヤーが出る（値域がある＝present の値がある）。
     const fill = await screen.findByTestId("layer-fill");
@@ -127,7 +127,7 @@ describe("ChoroplethLayer", () => {
   it("取得前は source を出さない（基図のみ＝描画を壊さない）", () => {
     globalThis.fetch = jest.fn().mockReturnValue(new Promise(() => {})) as unknown as typeof fetch;
 
-    renderWithClient(<ChoroplethLayer />);
+    renderWithClient(<ChoroplethLayer metric="area_km2" />);
 
     expect(screen.queryByTestId("source")).toBeNull();
   });
@@ -141,7 +141,7 @@ describe("ChoroplethLayer", () => {
       return Promise.resolve({ ok: true, status: 200, json: async () => sampleGeometry });
     }) as unknown as typeof fetch;
 
-    renderWithClient(<ChoroplethLayer />);
+    renderWithClient(<ChoroplethLayer metric="area_km2" />);
 
     // 輪郭線は出るが面塗りは出ない（値域が無いため）。
     await screen.findByTestId("layer-line");
