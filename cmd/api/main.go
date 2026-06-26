@@ -49,10 +49,12 @@ func main() {
 // ルート：
 //   - GET /api/health … 活性確認（handler 層）
 //   - GET /api/choropleth/geometry … 市区町村境界（GeoJSON FeatureCollection・値なし・ADR-0016）
+//   - GET /api/choropleth/values?metric= … 指標値（setFeatureState 向け・値とジオメトリ分離・ADR-0016）
 //   - GET /          … embed した FE 成果物を配信（本番のみ。開発は Rsbuild 開発サーバ）
 func registerRoutes(mux *http.ServeMux, queries *store.Queries) {
 	mux.Handle("GET /api/health", handler.Health())
 	mux.Handle("GET /api/choropleth/geometry", handler.Geometry(queries))
+	mux.Handle("GET /api/choropleth/values", handler.Values(queries))
 
 	if fe, err := frontendHandler(); err != nil {
 		// FE 未ビルド（web/dist が空＝.gitkeep のみ）でも API は動くべきなので、
