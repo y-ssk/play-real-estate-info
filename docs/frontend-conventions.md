@@ -22,6 +22,7 @@
 - **クライアントUI状態＝Zustand**（選択中の指標/分野/単位・絞り込み・パネル開閉）。selector で必要分だけ購読。純ローカルは `useState`。
 - **混ぜない**（サーバ状態を Zustand に溜めない／UI状態を Query に乗せない）。
 - **状態の真実は Zustand、MapLibre の `setFeatureState` は描画の鏡**（二重管理しない）。地図カメラは `react-map-gl` が保持。
+- **面塗りの結線（`/values`→`setFeatureState`→fill・段1 ②a 確立）**：値は TanStack Query で取得し（`useChoroplethValues(metric)`）、**形（geometry source）と値が両方そろってから** `setFeatureState({source, id: code}, {value, present:true})` を張る（source 描画前の `setFeatureState` は無視されるため順序が要る）。**指標切替・再取得では `removeFeatureState({source})` で一旦消してから張り直す**（前指標の持ち越し防止）。**fill-color は `["feature-state","value"]` を段階色へ補間**（色式・不透明度式は `styles/mapTokens.ts` の用途トークンに集約＝feature 側で生式を書かない・§4）。**データなしは色抜き**＝present でない（state 未設定）feature は **fill-opacity を 0**（null 比較は MapLibre 式の型に乗らないため真偽フラグ `present` で判定。値0＝該当なしは present=true で塗り「未調査」と区別・`ADR-0011`）。輪郭線レイヤーは塗りの上に残す。**段階色は青（浸水慣例）とコーラル（操作色）を避ける**中立系（`DESIGN`§1）。凡例（色段＋値域＋出典）は地図と同じ stops から作り一致させる。
 - **ピン留め＝Zustand `persist` → localStorage**（`ADR-0012`/`0013`）。
 
 ## §4 melta-ui／スタイル（根拠：`DESIGN.md`・melta-ui `prohibited.md`・`ADR-0013`）

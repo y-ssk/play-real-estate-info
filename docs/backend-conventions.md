@@ -138,6 +138,12 @@
 - **手順書＝`docs/runbooks/n03-ingest.md`**（運用手順 runbook・作成済み：前提→取得→投入＋正規化→検証→冪等→つまずき）。README はローカルセットアップに導線1行。入口＝`make fetch-n03` / `make ingest-n03`（対象は `N03_YEAR`/`N03_PREF` で上書き・既定 2023/13）。
 - 詳細解説＝`docs/notes/2026-06-25-n03-ingest.md`（投入工程・シェープ・SRID）／`docs/notes/2026-06-25-n03-ingest-path.md`（登場人物・流れ・ローダの置き場所）／`docs/notes/2026-06-25-n03-impl-building-blocks.md`（Go依存・シェル・使い捨てコンテナの作法）。
 
+### §5.2 縦持ち集計値（metric_value）と値配信（/values）の作法（根拠：`ADR-0015`/`0016`/`0011`）
+- **集計値の置き場＝`metric_value`（縦持ち・1単位×1指標＝1行・`migrations/000003`）**。スキーマ要点は `docs/02` §8（status の3区別＋CHECK整合・year NULL の式 UNIQUE 索引・`admin_unit` への FK）。指標追加は**行追加**で済む（スキーマ変更しない・`ADR-0015`）。
+- **データなし3区別は `status` 列で運ぶ**（present／none／suppressed）。**該当なし＝0 は `value=0, status=present`**（「危険ゼロ」と「未調査」を混同させない・`ADR-0011`）。`value` の NULL は status と対で（CHECK が整合を担保）。
+- **指標投入＝`cmd/ingest -metric=<key>`**（取得・鍵不要で完結する派生指標の経路）。**冪等＝指標単位 `DELETE WHERE metric=$1`→`INSERT`**（pref 単位の N03 正規化とは別の冪等境界）。投入後に**層1事後チェック**（件数>0・値域：負/0・桁外れ・present なのに NULL なし）を tx 内で行い、失敗はロールバック。面積（`area_km2`）が最初の実装＝`internal/ingest/metric_area.go`。件数が数百で `CopyFrom` を要さないため `INSERT...SELECT`（pgx 直）。大量投入（実 ETL）では §1.1 例外2＝`CopyFrom` を使う。
+- **値配信の応答形＝`[{code, value, status}]`**（`setFeatureState` 向け）。**`value` は null 可ゆえ Go では `*float64`**（`pgtype.Float8.Valid` を見て nil/値に変換）＝JSON で `null`/数値が出て FE が status と合わせて色抜きを判定できる。組み立ては純関数 `buildMetricValues` に切り出し DB 非依存で層1テスト（`internal/handler/values.go`）。クエリは sqlc 既定 `ListMetricValues`（`(metric, unit_kind)` 引数・unit_kind 引数化はメッシュ移行の継ぎ目 `ADR-0015`）。`metric` 未指定は 400。
+
 ## §6 以降（今後追記）
 
 > 誤り処理・ロギング/可観測性・トランザクション境界・レート制御の作法など、BE共通のお作法が出たら本書に章を足す（同じ器に集約し、文書の乱立を防ぐ）。
