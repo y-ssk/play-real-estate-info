@@ -4,10 +4,24 @@
 
 package store
 
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
 type AdminUnit struct {
 	Code     string      `json:"code"`
 	UnitKind string      `json:"unit_kind"`
 	Name     string      `json:"name"`
 	PrefCode string      `json:"pref_code"`
 	Geom     interface{} `json:"geom"`
+}
+
+type MetricValue struct {
+	UnitID   string        `json:"unit_id"`
+	UnitKind string        `json:"unit_kind"`
+	Metric   string        `json:"metric"`
+	Value    pgtype.Float8 `json:"value"`
+	Status   string        `json:"status"`
+	Year     pgtype.Int4   `json:"year"`
+	Source   string        `json:"source"`
 }
