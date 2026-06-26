@@ -106,10 +106,9 @@ export function ChoroplethLayer() {
   const fillLayer = range ? buildFillLayer(range.min, range.max) : null;
 
   return (
-    // promoteId="code"：feature-state の結合キー。MapLibre の geojson ソースは feature-state に
-    // 文字列のトップレベル id を使えない（数値id か promoteId が要る）。5桁コードは先頭0保持で文字列必須ゆえ
-    // properties.code を id へ昇格し、setFeatureState({id: code}) と確実に一致させる（層4で全色抜きだった原因）。
-    <Source id={SOURCE_ID} type="geojson" data={geometry} promoteId="code">
+    // feature.id は geometry API が5桁コードを付与済み（文字列トップレベル id）。MapLibre はこれを
+    // feature-state の結合に使える（実機で確認済＝色分けが効いていた）。promoteId は付けない。
+    <Source id={SOURCE_ID} type="geojson" data={geometry}>
       {/* 面塗り（下）→ 輪郭線（上）の順で重ね、塗りが線を隠さないようにする。 */}
       {fillLayer && <Layer {...fillLayer} />}
       <Layer {...outlineLayer} />
