@@ -28,13 +28,16 @@ func main() {
 	year := flag.Int("year", 0, "国土数値情報 N03 の年度（例: 2023）")
 	pref := flag.String("pref", "", "対象都道府県コード（2桁・例: 13）")
 	// -metric を指定すると指標投入モード（取得・鍵不要・DB 接続のみ）。N03 正規化とは別経路。
-	// 現状の対応指標は area_km2（市区町村面積・admin_unit から算出）のみ。
-	metric := flag.String("metric", "", "投入する指標キー（例: area_km2）。指定時は指標投入モード（year/pref 不要）")
+	// 対応指標：area_km2（admin_unit から算出）／pop_change_rate_2020_2050（XKT013 タイル群を集計・要 -data）。
+	metric := flag.String("metric", "", "投入する指標キー（例: area_km2, pop_change_rate_2020_2050）。指定時は指標投入モード（year/pref 不要）")
+	// -data は指標がローカルのファイル群（取得済みタイル等）を読む場合の入力ディレクトリ。
+	// area_km2 のような算出指標では不要。pop_change_rate_2020_2050 は data/xkt013/<vintage>/13 を指す。
+	dataDir := flag.String("data", "", "指標が読む入力ディレクトリ（例: data/xkt013/2050/13）。ファイルを読む指標でのみ必要")
 	flag.Parse()
 
 	// モード分岐：-metric があれば指標投入（鍵不要・全単位一括）、無ければ従来の N03 正規化。
 	if *metric != "" {
-		if err := runMetric(*metric); err != nil {
+		if err := runMetric(*metric, *dataDir); err != nil {
 			log.Fatalf("ingest: %v", err)
 		}
 		return
@@ -49,13 +52,13 @@ func main() {
 //
 // 面積（area_km2）は admin_unit の境界から算出する派生指標ゆえ MLIT API も鍵も不要で、
 // metric_value→/values→setFeatureState→面塗りの継ぎ目を取得の不確実性なしに通すための指標。
-func runMetric(metric string) error {
+func runMetric(metric, dataDir string) error {
 	dsn, err := db.DSNFromEnv()
 	if err != nil {
 		return err
 	}
 
-	// 算出は ST_Area の集計で数百件ゆえ短時間だが、止まったら気づけるよう上限を置く（Ctrl-C でも中断可）。
+	// 算出/集計は数百件〜数十万メッシュゆえ短時間だが、止まったら気づけるよう上限を置く（Ctrl-C でも中断可）。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -70,8 +73,19 @@ func runMetric(metric string) error {
 		log.Printf("ingest: 指標投入完了 metric=%s 投入件数=%d 値域[min=%.3f max=%.3f]km²",
 			res.Metric, res.Inserted, res.MinValue, res.MaxValue)
 		return nil
+	case "pop_change_rate_2020_2050":
+		if dataDir == "" {
+			return fmt.Errorf("-metric=pop_change_rate_2020_2050 は -data を要する（例: -data=data/xkt013/2050/13。先に scripts/fetch-xkt013.sh）")
+		}
+		res, err := ingest.ComputePopChangeRate(ctx, dsn, dataDir)
+		if err != nil {
+			return err
+		}
+		log.Printf("ingest: 指標投入完了 metric=%s 投入件数=%d (present=%d none=%d) 率[min=%.3f max=%.3f] メッシュ採用=%d 重複skip=%d 県外skip=%d",
+			res.Metric, res.Inserted, res.Present, res.None, res.MinRate, res.MaxRate, res.MeshKept, res.DupSkipped, res.PrefSkipped)
+		return nil
 	default:
-		return fmt.Errorf("未対応の -metric=%q（対応: area_km2）", metric)
+		return fmt.Errorf("未対応の -metric=%q（対応: area_km2, pop_change_rate_2020_2050）", metric)
 	}
 }
 

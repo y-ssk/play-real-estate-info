@@ -5,7 +5,9 @@ import {
   CHOROPLETH_OUTLINE_COLOR,
   CHOROPLETH_OUTLINE_WIDTH,
   choroplethFillColor,
+  divergingFillColor,
 } from "../../styles/mapTokens";
+import { DEFAULT_METRIC, METRICS } from "./metrics";
 import { useChoroplethGeometry } from "./useChoroplethGeometry";
 import { useChoroplethValues } from "./useChoroplethValues";
 
@@ -15,9 +17,6 @@ const SOURCE_ID = "choropleth";
 const OUTLINE_LAYER_ID = "choropleth-outline";
 /** 面塗りレイヤーの id（輪郭線より下＝線を塗りで隠さない）。 */
 const FILL_LAYER_ID = "choropleth-fill";
-
-/** 実証スライス（2a）の対象指標。面積（取得・鍵不要・既存 geom から算出）。 */
-const METRIC = "area_km2";
 
 /**
  * 輪郭線のスタイル。色・太さは生値直書きせず用途トークン経由（DESIGN §4）。
@@ -34,19 +33,20 @@ const outlineLayer: LineLayer = {
 };
 
 /**
- * 面塗りレイヤーのスタイルを値域から組む。
+ * 面塗りレイヤーのスタイルを値域と配色方式から組む。
  *
- * fill-color＝feature-state の value を段階色へ（choroplethFillColor）。**データなしは色抜き**：
- * value（feature-state）が無い/null の feature は fill-opacity を 0 にし、基図をそのまま見せる
- * （ADR-0011 データなし3区別の「none/秘匿は塗らない」を視覚で担保）。値がある feature だけ不透明度を載せる。
+ * 配色方式は指標定義（{@link METRICS}）の `scale` で分岐する：量＝sequential（緑・0起点でなくてよい）、
+ * 符号付き＝diverging（0 中央の発散）。**データなしは色抜き**：value（feature-state）が無い/null の feature は
+ * fill-opacity を 0 にし基図をそのまま見せる（ADR-0011）。値がある feature だけ不透明度を載せる。
  */
-function buildFillLayer(min: number, max: number): FillLayer {
+function buildFillLayer(min: number, max: number, scale: "sequential" | "diverging"): FillLayer {
   return {
     id: FILL_LAYER_ID,
     type: "fill",
     source: SOURCE_ID,
     paint: {
-      "fill-color": choroplethFillColor(min, max),
+      "fill-color":
+        scale === "diverging" ? divergingFillColor(min, max) : choroplethFillColor(min, max),
       // データなしは色抜き（state 未設定/null は不透明度0）。式はトークンに集約（§4）。
       "fill-opacity": CHOROPLETH_FILL_OPACITY_EXPR,
     },
@@ -56,18 +56,23 @@ function buildFillLayer(min: number, max: number): FillLayer {
 /**
  * ChoroplethLayer は境界（形）に指標値を載せて面塗りする（ADR-0016 値とジオメトリの分離）。
  *
- * 形は geojson source、値は別経路で取得し setFeatureState で5桁コード結合する（状態の真実は値、
- * setFeatureState は描画の鏡・frontend-conventions §3）。**形と値が両方そろってから state を張る**
- * （順序：source 描画前に setFeatureState すると無視されるため、geometry 取得後に値を流す）。
+ * 形は geojson source（指標に依らず共通＝1度だけ取得）、値は指標ごとに別経路で取得し setFeatureState で
+ * 5桁コード結合する（状態の真実は値、setFeatureState は描画の鏡・frontend-conventions §3）。
+ * **形と値が両方そろってから state を張る**（source 描画前の setFeatureState は無視されるため）。
+ * **指標切替では removeFeatureState で一旦消してから張り直す**（前指標の持ち越し防止・§3）。
+ * 配色方式は指標定義の `scale` で分岐（面積=sequential緑／人口増減=diverging紫↔緑・0中央）。
  * データなし（status none/suppressed、value=null）は塗らない＝色抜き（ADR-0011）。
+ *
+ * @param metric 表示する指標キー（未指定は {@link DEFAULT_METRIC}）。
  */
-export function ChoroplethLayer() {
+export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }) {
   const { current: map } = useMap();
   const { data: geometry } = useChoroplethGeometry();
-  const { data: values } = useChoroplethValues(METRIC);
+  const { data: values } = useChoroplethValues(metric);
+  const def = METRICS[metric];
 
   // 値域 [min,max]：present かつ value!=null（数値）の値だけから取る。
-  // データなし/秘匿（null）と該当なし0 の扱い：0 は present の数値ゆえ値域に含む（最小が0になりうる）。
+  // 符号付き（増減率）は負を含むため min が負になりうる（発散配色が 0 中央で受ける）。
   const range = useMemo(() => {
     const nums = (values ?? [])
       .filter((v) => v.status === "present" && v.value !== null)
@@ -80,8 +85,9 @@ export function ChoroplethLayer() {
 
   // 形と値が両方そろってから feature-state を張る（順序：geometry source が描画済みであること）。
   // 値あり（present・数値）だけ value を載せ、データなし（none/suppressed・null）は state を張らない
-  // ＝色抜き条件（fill-opacity の !=null）に乗る。指標切替時の取り違えを避けるため、毎回 removeFeatureState で
-  // 一旦消してから張り直す（前指標の値が残らない）。
+  // ＝色抜き条件（fill-opacity の present フラグ）に乗る。毎回 removeFeatureState で一旦消してから張り直す
+  // （前指標の値が残らない）。**指標切替は values が差し替わる（query キーに metric を含む）ことで本 effect が
+  // 再実行されるため、metric 自体を依存に足す必要はない**（values が真実・metric は冗長依存＝Biome 指摘）。
   useEffect(() => {
     if (!map || !geometry || !values) {
       return;
@@ -103,7 +109,9 @@ export function ChoroplethLayer() {
   }
 
   // 値域が無い間（値未取得/全データなし）は面塗りを出さず輪郭線のみ＝形は先に見える。
-  const fillLayer = range ? buildFillLayer(range.min, range.max) : null;
+  // scale は指標定義から（未知 metric は安全側で sequential）。
+  const scale = def?.scale ?? "sequential";
+  const fillLayer = range ? buildFillLayer(range.min, range.max, scale) : null;
 
   return (
     // feature.id は geometry API が5桁コードを付与済み（文字列トップレベル id）。MapLibre はこれを
@@ -115,5 +123,3 @@ export function ChoroplethLayer() {
     </Source>
   );
 }
-
-export { METRIC as CHOROPLETH_METRIC };

@@ -23,6 +23,9 @@
 - **混ぜない**（サーバ状態を Zustand に溜めない／UI状態を Query に乗せない）。
 - **状態の真実は Zustand、MapLibre の `setFeatureState` は描画の鏡**（二重管理しない）。地図カメラは `react-map-gl` が保持。
 - **面塗りの結線（`/values`→`setFeatureState`→fill・段1 ②a 確立）**：値は TanStack Query で取得し（`useChoroplethValues(metric)`）、**形（geometry source）と値が両方そろってから** `setFeatureState({source, id: code}, {value, present:true})` を張る（source 描画前の `setFeatureState` は無視されるため順序が要る）。**指標切替・再取得では `removeFeatureState({source})` で一旦消してから張り直す**（前指標の持ち越し防止）。**fill-color は `["feature-state","value"]` を段階色へ補間**（色式・不透明度式は `styles/mapTokens.ts` の用途トークンに集約＝feature 側で生式を書かない・§4）。**データなしは色抜き**＝present でない（state 未設定）feature は **fill-opacity を 0**（null 比較は MapLibre 式の型に乗らないため真偽フラグ `present` で判定。値0＝該当なしは present=true で塗り「未調査」と区別・`ADR-0011`）。輪郭線レイヤーは塗りの上に残す。**段階色は青（浸水慣例）とコーラル（操作色）を避ける**中立系（`DESIGN`§1）。凡例（色段＋値域＋出典）は地図と同じ stops から作り一致させる。
+- **指標の見せ方は registry に集約（②c）**：表示名・単位・**配色方式（sequential/diverging）**・出典・値整形を `features/choropleth/metrics.ts`（`METRICS`）に1か所で持ち、Layer/Legend/Toggle が参照する＝**指標追加は1エントリ追加**で済む（色値・式は持たず `mapTokens` を指す・§4）。`/values` の応答に含まれない「見せ方」をここで束ねる。
+- **発散（diverging）配色は0%中央に固定（②c 将来人口増減率）**：符号付き指標は `mapTokens` の `divergingFillColor/divergingFillLegend`（**ColorBrewer PRGn 紫↔緑・青/コーラルを避け色覚配慮**）。**対称ドメイン `[-bound,+bound]`（`bound=max(|min|,|max|)`）で0を必ず中央色に当てる**（データ中点に流されない＝増減の境がずれない）。凡例も中央0%を明示。逐次（量）と発散（符号付き）は `metrics.ts` の `scale` で分岐。**推計指標は凡例/出典に「推計」を明示**（`ADR-0009` 断定しない）。
+- **選択中の指標は当面 `useState`（②c）**：app 層が `metric` を持ち Toggle/Layer/Legend へ渡す（三者を1つの真実に揃える）。§3 の「選択中の指標＝Zustand」へは、**パネル/絞り込み等の横断 UI 状態が増える段で昇格**（純ローカルで足りるうちは `useState`・docs/99 トリガー）。
 - **ピン留め＝Zustand `persist` → localStorage**（`ADR-0012`/`0013`）。
 
 ## §4 melta-ui／スタイル（根拠：`DESIGN.md`・melta-ui `prohibited.md`・`ADR-0013`）
