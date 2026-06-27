@@ -109,8 +109,12 @@ describe("ChoroplethLayer", () => {
 
     renderWithClient(<ChoroplethLayer />);
 
-    // 面塗りレイヤーが出る（値域がある＝present の値がある）。
-    const fill = await screen.findByTestId("layer-fill");
+    // データ面塗りレイヤーが出る（値域がある＝present の値がある）。ホバー面オーバーレイも type=fill ゆえ
+    // testid が同じ（layer-fill）＝データ塗りは id（choropleth-fill）で特定する（ホバー面は別 id）。
+    await screen.findAllByTestId("layer-fill");
+    const fills = screen.getAllByTestId("layer-fill");
+    const fill = fills.find((el) => el.getAttribute("data-id") === "choropleth-fill");
+    expect(fill).toBeDefined();
     expect(fill).toHaveAttribute("data-source", "choropleth");
     // 輪郭線は残る（区界を読ませる線・死守）。通常輪郭＋選択強調の2本の line があるため、
     // 通常輪郭は id で特定する（選択強調は別 id・選択時のみ太くなる）。
@@ -120,7 +124,7 @@ describe("ChoroplethLayer", () => {
     expect(line).toHaveAttribute("data-line-color", CHOROPLETH_OUTLINE_COLOR);
 
     // fill-opacity は色抜きの case 式（present フラグが真の時だけ不透明）。
-    const op = JSON.parse(fill.getAttribute("data-fill-opacity") ?? "null");
+    const op = JSON.parse(fill?.getAttribute("data-fill-opacity") ?? "null");
     expect(op[0]).toBe("case");
     expect(op[1]).toEqual(["==", ["feature-state", "present"], true]);
 
@@ -152,8 +156,12 @@ describe("ChoroplethLayer", () => {
 
     renderWithClient(<ChoroplethLayer />);
 
-    // 輪郭線は出るが面塗りは出ない（値域が無いため）。通常輪郭＋選択強調で line は2本。
+    // 輪郭線は出るが「データ面塗り」は出ない（値域が無いため）。ホバー面オーバーレイ（別 id・常設）は
+    // type=fill ゆえ layer-fill に含まれるため、データ塗りは id（choropleth-fill）の不在で確かめる。
     await screen.findAllByTestId("layer-line");
-    expect(screen.queryByTestId("layer-fill")).toBeNull();
+    const dataFill = screen
+      .queryAllByTestId("layer-fill")
+      .find((el) => el.getAttribute("data-id") === "choropleth-fill");
+    expect(dataFill).toBeUndefined();
   });
 });

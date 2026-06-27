@@ -10,6 +10,8 @@ import {
 import { useSelectionStore } from "../../lib/selection";
 import {
   CHOROPLETH_FILL_OPACITY_EXPR,
+  CHOROPLETH_HOVER_FILL_COLOR,
+  CHOROPLETH_HOVER_FILL_OPACITY_EXPR,
   CHOROPLETH_HOVER_OUTLINE_COLOR,
   CHOROPLETH_HOVER_OUTLINE_WIDTH,
   CHOROPLETH_OUTLINE_COLOR,
@@ -51,13 +53,33 @@ const outlineLayer: LineLayer = {
   },
 };
 
+/** ホバー中の自治体の全面オーバーレイ（面）の id（データ塗りの上・通常輪郭より下）。 */
+const HOVER_FILL_LAYER_ID = "choropleth-hover-fill";
+
+/**
+ * ホバー面オーバーレイ（feature-state `hover` が真の自治体だけ淡い中立を全面に重ねる・一時の合図）。
+ * 輪郭線だけでなく「面（ポリゴン全体）が反応する」感を出す（層4 目視の指摘）。データ塗りの上に置くが
+ * 不透明度が低く（{@link CHOROPLETH_HOVER_FILL_OPACITY_EXPR}＝0.12）データ色・基図は透けて読める。
+ * 色/不透明度は mapTokens に集約（生値を書かない・§4）。輪郭線と同じ `hover` フラグで面+線が連動する。
+ */
+const hoverFillLayer: FillLayer = {
+  id: HOVER_FILL_LAYER_ID,
+  type: "fill",
+  source: SOURCE_ID,
+  paint: {
+    "fill-color": CHOROPLETH_HOVER_FILL_COLOR,
+    "fill-opacity": CHOROPLETH_HOVER_FILL_OPACITY_EXPR,
+  },
+};
+
 /** ホバー中の単位を縁取る一時強調レイヤーの id（通常輪郭の上・選択強調より下）。 */
 const HOVER_LAYER_ID = "choropleth-hover";
 
 /**
- * ホバー強調レイヤー（feature-state `hover` が真の feature だけ中立スレートで縁取り・一時の合図）。
- * 通常輪郭の上・選択強調の下に置く＝ホバー中かつ選択中は選択（コーラル相当）が上に勝つ（一時より確定優先）。
+ * ホバー強調レイヤー（feature-state `hover` が真の feature だけ near-black 中立で縁取り・一時の合図）。
+ * 通常輪郭の上・選択強調の下に置く＝ホバー中かつ選択中は選択（コーラル brand）が上に勝つ（一時より確定優先）。
  * 乗っていない feature は幅0＝描かれない（過剰にしない）。色/太さは mapTokens に集約（生値を書かない・§4）。
+ * 面オーバーレイ（{@link hoverFillLayer}）と同じ `hover` フラグで連動＝面+線が一緒に強調される。
  */
 const hoverLayer: LineLayer = {
   id: HOVER_LAYER_ID,
@@ -239,9 +261,11 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
     // feature.id は geometry API が5桁コードを付与済み（文字列トップレベル id）。MapLibre はこれを
     // feature-state の結合に使える（実機で確認済＝色分けが効いていた）。promoteId は付けない。
     <Source id={SOURCE_ID} type="geojson" data={geometry}>
-      {/* 面塗り（下）→ 輪郭線 → ホバー強調 → 選択強調（上）の順。塗り/通常線が強調縁を隠さず、
-          ホバー（一時）の上に選択（確定）が勝つ＝ホバー中かつ選択中は選択縁が見える。 */}
+      {/* データ塗り（下）→ ホバー面オーバーレイ → 通常輪郭 → ホバー輪郭 → 選択輪郭(コーラル・上) の順。
+          ホバー（面+線・一時）の上に選択（確定）が勝つ＝ホバー中かつ選択中は選択縁が見える。
+          ホバー面はデータ塗りの上だが不透明度0.12でデータ色を透かす（読みは保つ）。 */}
       {fillLayer && <Layer {...fillLayer} />}
+      <Layer {...hoverFillLayer} />
       <Layer {...outlineLayer} />
       <Layer {...hoverLayer} />
       <Layer {...selectedLayer} />

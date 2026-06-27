@@ -1,5 +1,11 @@
 import type { FillLayer, LineLayer } from "react-map-gl/maplibre";
 
+/** 面塗りの fill-opacity paint の型（react-map-gl の FillLayer から導出）。ホバー面・データ色抜きで共用。 */
+type FillOpacity = NonNullable<FillLayer["paint"]>["fill-opacity"];
+
+/** 面塗りの fill-color paint の型（react-map-gl の FillLayer から導出）。ホバー面・段階色で共用。 */
+type FillColor = NonNullable<FillLayer["paint"]>["fill-color"];
+
 /**
  * 地図レイヤー用の用途トークン（DESIGN §1・§4）。
  *
@@ -39,47 +45,75 @@ export const CHOROPLETH_OUTLINE_WIDTH: OutlineWidth = [
 ];
 
 /**
- * 選択中の単位の強調輪郭色。melta-ui のスレート系（slate-800 = #1e293b）。
+ * 選択中の単位の強調輪郭色＝コーラル brand（`--coral-500` = #F2615A）。
  *
- * なぜスレート系か：差し色（コーラル・操作色）は hex 未確定（DESIGN §1 仮確定）かつ、選択の強調は地図上で
- * 面に重なるため点使いの原則に反する。よって濃いスレートで「いま選んでいる区」を縁取り、データ色（青/暖色）とも
- * 衝突させない（DESIGN §1 データ色とUI色の分離）。差し色 hex 確定後に昇格を再評価（docs/99）。
+ * なぜコーラルへ昇格したか：ADR-0027 で差し色コーラルの hex が確定した（旧コメントの「hex 未確定ゆえ
+ * スレート」という保留が解けた・docs/99「差し色 hex 確定後に昇格」宿題の実施）。選択リングは DESIGN §1 の
+ * 「文字を載せない強調＝brand」に当たり、選択中の1区だけ（点使い）に出すため面で青と衝突しない。線は1区分
+ * ＝細い「点」なのでデータ色（青/暖色）とも干渉せず、確定（コーラル）と一時ホバー（near-black 中立）が色で割れる。
  */
-export const CHOROPLETH_SELECTED_OUTLINE_COLOR = "#1e293b";
+export const CHOROPLETH_SELECTED_OUTLINE_COLOR = "#f2615a";
 
 /**
- * 選択中の単位の強調輪郭の太さ式：feature-state `selected` が真の feature だけ太く描く。
+ * 選択中の単位の強調輪郭の太さ式：feature-state `selected` が真の feature だけ太く描く（ズーム連動・最上位）。
  *
- * 通常輪郭（{@link CHOROPLETH_OUTLINE_WIDTH}）の上に重ねる別レイヤーで使う。選択していない feature は幅0
- * ＝描かれない（過剰な強調を避ける・タスク方針）。状態の真実は選択ストア（Zustand）で、ここは描画の鏡
- * （setFeatureState 経由・frontend-conventions §3）。
+ * 通常輪郭（{@link CHOROPLETH_OUTLINE_WIDTH}）・ホバー輪郭（{@link CHOROPLETH_HOVER_OUTLINE_WIDTH}）の上に
+ * 重ねる別レイヤーで使う。選択していない feature は幅0＝描かれない（過剰な強調を避ける）。状態の真実は選択
+ * ストア（Zustand）で、ここは描画の鏡（setFeatureState 経由・frontend-conventions §3）。
+ * **各ズームで「ホバー > 通常」をさらに上回る**よう設定し、選択（確定）が常に最も太く見える（重ね順も最上位）。
  */
 export const CHOROPLETH_SELECTED_OUTLINE_WIDTH: OutlineWidth = [
   "case",
   ["==", ["feature-state", "selected"], true],
-  3,
+  ["interpolate", ["linear"], ["zoom"], 9, 3.5, 12, 4.3, 15, 6, 17, 8],
   0,
 ];
 
 /**
- * ホバー強調の輪郭色（中立スレート・slate-700 = #334155）。
+ * ホバー強調の輪郭色＝はっきり見える near-black 中立（slate-900 = #0f172a）。
  *
- * なぜ中立スレートか：ホバーは「ここに乗っている」一時の合図で、確定の選択（コーラル）とは別物。差し色を
- * 使うと一時/確定の区別が消え、点使い（DESIGN §1）も崩れる。よって黒子のスレート系で「触れている」だけ示し、
- * データ色（青/暖色）とも衝突させない。通常輪郭（slate-600）より一段濃く、選択（slate-800）より淡い中間。
- * 色は mapTokens に集約（feature 側で生値を書かない・二重管理しない・DESIGN §4）。重ね順は選択が上
- * ＝ホバー中かつ選択中はコーラル相当の選択強調が勝つ（一時より確定を優先・ChoroplethLayer のレイヤー順）。
+ * なぜ near-black 中立か：ホバーは「ここに乗っている」一時の合図で、確定の選択（コーラル brand）とは別物。
+ * 差し色を使うと一時/確定の区別が消え、点使い（DESIGN §1）も崩れるため中立スレート系で示す。旧 slate-700 は
+ * 通常輪郭（slate-600）と濃さが近く見分けられなかった（層4 目視）＝最も濃い near-black にして通常線と判別させる。
+ * データ色（青/暖色）とも衝突しない。色は mapTokens に集約（feature 側で生値を書かない・DESIGN §4）。
+ * 重ね順は選択が上＝ホバー中かつ選択中はコーラルの選択強調が勝つ（一時より確定を優先・ChoroplethLayer のレイヤー順）。
  */
-export const CHOROPLETH_HOVER_OUTLINE_COLOR = "#334155";
+export const CHOROPLETH_HOVER_OUTLINE_COLOR = "#0f172a";
 
 /**
- * ホバー強調輪郭の太さ式：feature-state `hover` が真の feature だけ縁取る（外れたら幅0＝消える）。
- * 選択強調（{@link CHOROPLETH_SELECTED_OUTLINE_WIDTH}・幅3）より細め（幅2）にし、一時の合図に留める。
+ * ホバー強調輪郭の太さ式：feature-state `hover` が真の feature だけ縁取る（外れたら幅0＝消える・ズーム連動）。
+ *
+ * **常に通常輪郭（{@link CHOROPLETH_OUTLINE_WIDTH}・0.6→5px）を各ズームで +1.5px 以上上回る**よう設定する。
+ * 旧実装は幅2固定で、拡大時に通常輪郭（17で5px）へ負けてホバーが見えなくなった（層4 目視）。ズーム連動で
+ * 引き〜寄りのどこでも通常線より太く＝触れている区がはっきり分かる。選択（{@link CHOROPLETH_SELECTED_OUTLINE_WIDTH}）
+ * よりは細く保ち、確定が最も太い序列を崩さない。
  */
 export const CHOROPLETH_HOVER_OUTLINE_WIDTH: OutlineWidth = [
   "case",
   ["==", ["feature-state", "hover"], true],
-  2,
+  ["interpolate", ["linear"], ["zoom"], 9, 2.4, 12, 3.2, 15, 4.8, 17, 6.8],
+  0,
+];
+
+/**
+ * ホバー中の自治体に全面へかける中立オーバーレイの色（slate-900 = #0f172a）。
+ *
+ * 輪郭線だけでは「面（ポリゴン全体）が反応している」感が弱い（層4 目視の指摘）。ホバー中の自治体に淡い
+ * 中立オーバーレイを重ね、面ごと反応させる。near-black の中立でデータ色（青/暖色）と色相で競合しない
+ * （混ざって別の色味に見えない）。不透明度は低く保ちデータ色を透かす（{@link CHOROPLETH_HOVER_FILL_OPACITY_EXPR}）。
+ */
+export const CHOROPLETH_HOVER_FILL_COLOR: FillColor = "#0f172a";
+
+/**
+ * ホバーオーバーレイの不透明度式：feature-state `hover` が真の自治体だけ淡く重ね、他は0（重ねない）。
+ *
+ * 0.12＝データ色・基図が透けて読める淡さ（0.10〜0.15 の中庸）。輪郭線（{@link CHOROPLETH_HOVER_OUTLINE_WIDTH}）と
+ * 同じ `hover` フラグで連動＝マウスが乗った自治体だけ面+線が一緒に強調される。式はトークンに集約（§4）。
+ */
+export const CHOROPLETH_HOVER_FILL_OPACITY_EXPR: FillOpacity = [
+  "case",
+  ["==", ["feature-state", "hover"], true],
+  0.12,
   0,
 ];
 
@@ -101,9 +135,6 @@ export const CHOROPLETH_FILL_RAMP = [
 
 /** 面塗りの不透明度。基図（地名・道路）を透かして読めるよう塗りつぶさない（層4 目視）。 */
 export const CHOROPLETH_FILL_OPACITY = 0.6;
-
-/** 面塗りの fill-opacity paint の型（react-map-gl の FillLayer から導出）。 */
-type FillOpacity = NonNullable<FillLayer["paint"]>["fill-opacity"];
 
 /**
  * 面塗りの不透明度式：**データなしは色抜き**（ADR-0011）。
@@ -132,9 +163,6 @@ export interface FillLegendStop {
   /** この段が表す値の下限（min から等間隔）。 */
   lowerBound: number;
 }
-
-/** 面塗りの fill paint の型（react-map-gl の FillLayer から導出＝外部型を推測しない）。 */
-type FillColor = NonNullable<FillLayer["paint"]>["fill-color"];
 
 /**
  * choroplethFillColor は値域 [min,max] を {@link CHOROPLETH_FILL_RAMP} で段階色に写す式を返す。

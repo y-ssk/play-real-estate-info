@@ -1,11 +1,27 @@
 import {
   CHOROPLETH_DIVERGING_RAMP,
   CHOROPLETH_FILL_RAMP,
+  CHOROPLETH_HOVER_OUTLINE_WIDTH,
+  CHOROPLETH_OUTLINE_WIDTH,
+  CHOROPLETH_SELECTED_OUTLINE_WIDTH,
   choroplethFillColor,
   choroplethFillLegend,
   divergingFillColor,
   divergingFillLegend,
 } from "./mapTokens";
+
+// 輪郭幅の式から、各ズーム基準点の幅を取り出す小道具（["interpolate",["linear"],["zoom"], z0,w0, z1,w1, ...]）。
+// 通常は interpolate 直書き、ホバー/選択は ["case", cond, interpolate, 0] の3要素目が interpolate。
+function widthAtZoom(expr: unknown, zoom: number): number {
+  const interp = (Array.isArray(expr) && expr[0] === "case" ? expr[2] : expr) as unknown[];
+  const stops = interp.slice(3); // [z0,w0, z1,w1, ...]
+  for (let i = 0; i < stops.length; i += 2) {
+    if (stops[i] === zoom) {
+      return stops[i + 1] as number;
+    }
+  }
+  throw new Error(`zoom ${zoom} の基準点が式に無い`);
+}
 
 describe("choroplethFillColor", () => {
   it("値域 [min,max] を5段ランプへ等間隔で写す（凡例と同じ stops）", () => {
@@ -64,6 +80,17 @@ describe("divergingFillColor", () => {
     // bound=1 にフォールバックし境界が単調増加（interpolate が壊れない）。
     expect(stops[0]).toBe(-1);
     expect(stops[8]).toBe(1);
+  });
+});
+
+describe("輪郭幅の序列（通常 < ホバー < 選択・各ズームで保たれる）", () => {
+  // 旧実装はホバー固定2pxで拡大時に通常線へ負けた（層4 目視）。ズーム連動で常に上回ることを担保する。
+  it.each([9, 12, 15, 17])("ズーム%iでホバーは通常を1.5px以上上回り、選択はホバーより太い", (z) => {
+    const normal = widthAtZoom(CHOROPLETH_OUTLINE_WIDTH, z);
+    const hover = widthAtZoom(CHOROPLETH_HOVER_OUTLINE_WIDTH, z);
+    const selected = widthAtZoom(CHOROPLETH_SELECTED_OUTLINE_WIDTH, z);
+    expect(hover).toBeGreaterThanOrEqual(normal + 1.5);
+    expect(selected).toBeGreaterThan(hover);
   });
 });
 
