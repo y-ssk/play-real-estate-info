@@ -43,9 +43,16 @@ export function KartePanel() {
     <aside style={ASIDE_STYLE} aria-label="エリアカルテ">
       <Panel style={INNER_STYLE}>
         <header style={HEADER_STYLE}>
-          {/* 名称は表示用（結合はコード・ADR-0014）。取得前は選択中コードを仮表示し空白を避ける。 */}
-          <h2 style={TITLE_STYLE}>{data?.name ?? selected.unitId}</h2>
-          {/* 閉じる＝Lucide X（DESIGN §6 SVG・aria-label 必須）。選択を解除し地図全面へ戻す（③開閉式）。 */}
+          {/* 名称は表示用（結合はコード・ADR-0014）。取得前に生の5桁コード（内部識別子）を見せると
+              区を選び直すたび数字がチラつく＝代わりにスケルトン（細いバー）を出す（ローディングの正しさ）。
+              data 到着後に name が空/欠損のエッジは生コードに落とさず中立文言にする（生コードは絶対に出さない）。 */}
+          {data ? (
+            <h2 style={TITLE_STYLE}>{data.name || "（名称不明）"}</h2>
+          ) : (
+            <div style={TITLE_SKELETON_STYLE} aria-label="名称を読み込み中" />
+          )}
+          {/* 閉じる＝Lucide X（DESIGN §6 SVG・aria-label 必須）。読込中でも常に出す（閉じられる）。
+              選択を解除し地図全面へ戻す（③開閉式）。 */}
           <IconButton icon={X} label="カルテを閉じる" onClick={clear} />
         </header>
 
@@ -164,6 +171,15 @@ const TITLE_STYLE: CSSProperties = {
   margin: 0,
   font: "var(--text-heading)", // 名称は見出し（読ませる・DESIGN §3）。
   color: "var(--color-text-strong)",
+};
+
+// 名称取得前のプレースホルダ（細いバー）。見出し1行ぶんの高さを占め、生コードを出さずに空白も避ける。
+// divider トークン（薄い面）で控えめに（スケルトンは bg-slate-200 相当・prohibited.md スケルトン）。
+const TITLE_SKELETON_STYLE: CSSProperties = {
+  width: "55%",
+  height: 18,
+  borderRadius: "var(--radius-sm)",
+  background: "var(--color-divider)",
 };
 
 const NOTE_STYLE: CSSProperties = { margin: "8px 0", color: "var(--color-text-muted)" };
