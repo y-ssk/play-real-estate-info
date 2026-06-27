@@ -61,12 +61,24 @@ export const CHOROPLETH_SELECTED_OUTLINE_COLOR = "#f2615a";
  * 重ねる別レイヤーで使う。選択していない feature は幅0＝描かれない（過剰な強調を避ける）。状態の真実は選択
  * ストア（Zustand）で、ここは描画の鏡（setFeatureState 経由・frontend-conventions §3）。
  * **各ズームで「ホバー > 通常」をさらに上回る**よう設定し、選択（確定）が常に最も太く見える（重ね順も最上位）。
+ *
+ * 式の形に注意：**`zoom` 入力の `interpolate` は最上位でしか使えない**（MapLibre 仕様＝`case` 等に入れ子に
+ * すると "zoom expression may only be used as input to a top-level step or interpolate expression" で
+ * レイヤーごと無効になる）。よって `interpolate(zoom)` を最上位に置き、**各 stop の出力側で feature-state を
+ * `case` 分岐**する（選択時の幅／非選択は0）。＝ズーム連動と feature-state を両立する正しい形。
  */
 export const CHOROPLETH_SELECTED_OUTLINE_WIDTH: OutlineWidth = [
-  "case",
-  ["==", ["feature-state", "selected"], true],
-  ["interpolate", ["linear"], ["zoom"], 9, 3.5, 12, 4.3, 15, 6, 17, 8],
-  0,
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  9,
+  ["case", ["==", ["feature-state", "selected"], true], 3.5, 0],
+  12,
+  ["case", ["==", ["feature-state", "selected"], true], 4.3, 0],
+  15,
+  ["case", ["==", ["feature-state", "selected"], true], 6, 0],
+  17,
+  ["case", ["==", ["feature-state", "selected"], true], 8, 0],
 ];
 
 /**
@@ -87,12 +99,23 @@ export const CHOROPLETH_HOVER_OUTLINE_COLOR = "#0f172a";
  * 旧実装は幅2固定で、拡大時に通常輪郭（17で5px）へ負けてホバーが見えなくなった（層4 目視）。ズーム連動で
  * 引き〜寄りのどこでも通常線より太く＝触れている区がはっきり分かる。選択（{@link CHOROPLETH_SELECTED_OUTLINE_WIDTH}）
  * よりは細く保ち、確定が最も太い序列を崩さない。
+ *
+ * 式の形は選択幅（{@link CHOROPLETH_SELECTED_OUTLINE_WIDTH}）と同じ理由で **`interpolate(zoom)` を最上位**に
+ * 置き、各 stop の出力側で `hover` を `case` 分岐する（`zoom` 入力の interpolate を case に入れ子にすると
+ * MapLibre が無効と判定しレイヤーごと描画されない＝層4で「ホバー線が出ない」の真因だった）。
  */
 export const CHOROPLETH_HOVER_OUTLINE_WIDTH: OutlineWidth = [
-  "case",
-  ["==", ["feature-state", "hover"], true],
-  ["interpolate", ["linear"], ["zoom"], 9, 2.4, 12, 3.2, 15, 4.8, 17, 6.8],
-  0,
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  9,
+  ["case", ["==", ["feature-state", "hover"], true], 2.4, 0],
+  12,
+  ["case", ["==", ["feature-state", "hover"], true], 3.2, 0],
+  15,
+  ["case", ["==", ["feature-state", "hover"], true], 4.8, 0],
+  17,
+  ["case", ["==", ["feature-state", "hover"], true], 6.8, 0],
 ];
 
 /**

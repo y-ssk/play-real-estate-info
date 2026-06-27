@@ -206,8 +206,9 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
     prevSelectedRef.current = next;
   }, [map, geometry, values, selectedUnit]);
 
-  // ホバー強調（スライス3.6）：面塗り面に乗った feature に feature-state `hover` を張り、中立スレートで縁取る
-  // ＋カーソルを pointer に。一時の合図ゆえ状態は store に置かず effect 内ローカルで完結させる（選択＝確定は
+  // ホバー強調（スライス3.6）：面塗り面に乗った feature に feature-state `hover` を張り、面の淡い
+  // オーバーレイ＋中立 near-black の縁取りで示す（カーソルの pointer 化は MapView 側＝react-map-gl の
+  // `cursor` prop に乗せる）。一時の合図ゆえ状態は store に置かず effect 内ローカルで完結させる（選択＝確定は
   // store の真実だが、ホバーは描画の鏡そのもので永続させる意味がない）。直前 hover id を覚え、別 feature へ移る/
   // 地図外へ出るときに確実に外す（取り残し防止＝選択の prevSelectedRef と同じ流儀）。
   // 地図エンジン依存（MapLibre のイベント）ゆえ jsdom では検証しづらく層4目視に委ねる（ユニットテストは作らない）。
@@ -228,8 +229,9 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
         m.setFeatureState({ source: SOURCE_ID, id }, { hover: true });
       }
       hoveredId = id;
-      // カーソルは「押せる面に乗っている」ときだけ pointer（外れたら既定へ戻す）。
-      m.getCanvas().style.cursor = id ? "pointer" : "";
+      // カーソル（pointer 化）はここで getCanvas().style.cursor を直接いじらない＝react-map-gl が
+      // 毎レンダーで canvas の cursor を `cursor` prop から再適用し上書きするため効かない。カーソルは
+      // MapView 側で react-map-gl の `cursor` prop ＋ onMouseEnter/Leave に乗せる（描画の流儀に合わせる）。
     };
     // 面塗り面（押せる層）の上だけを購読する＝基図や輪郭線は対象外（クリック対象と同じ層）。
     const onMove = (e: MapLayerMouseEvent) => {

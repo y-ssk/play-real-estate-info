@@ -38,6 +38,11 @@ export function MapView({
   const mapStyle = useMemo(() => createBaseStyle(), []);
   // 現在ズーム（表示用）。initialViewState は保ちつつ onMove で読み取るだけ（地図は非制御のまま）。
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
+  // 押せる面（interactiveLayerIds）にカーソルが乗っているか。**カーソルは react-map-gl の `cursor` prop で
+  // 制御する**＝react-map-gl は毎レンダー canvas の cursor を prop から再適用するため、レイヤー側で
+  // getCanvas().style.cursor を直接書いても上書きされ効かない（層4で「カーソルがドラッグの手のまま」の原因）。
+  // react-map-gl の onMouseEnter/Leave は interactiveLayerIds の feature 出入りで発火するのでそれに乗せる。
+  const [overInteractive, setOverInteractive] = useState(false);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -53,6 +58,10 @@ export function MapView({
         onMove={(e) => setZoom(e.viewState.zoom)}
         interactiveLayerIds={interactiveLayerIds}
         onClick={onMapClick}
+        // 押せる面に乗ったら pointer（離れたら既定＝パン用の手）。react-map-gl がこの prop で canvas に適用する。
+        cursor={overInteractive ? "pointer" : undefined}
+        onMouseEnter={() => setOverInteractive(true)}
+        onMouseLeave={() => setOverInteractive(false)}
       >
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />
