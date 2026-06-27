@@ -100,7 +100,18 @@ melta の本文は 18px／行間2.0（Breathable）。地図UIの狭いパネル
 
 ---
 
-## 7. 検証（Feedback との接続）
+## 7. モーション（動的挙動）
+
+melta §0 のモーション継承を具体化する（スライス3.6・`ADR-0027` のトークン土台に乗せる）。
+
+- **程度＝用途トークンで持つ**（`web/src/styles/tokens.css`・部品は数値を直書きしない）：`--motion-fast 150ms`（ホバー・フォーカスの小さな変化）／`--motion-base 200ms`（パネル開閉など）／`--motion-ease cubic-bezier(.4,0,.2,1)`。melta 作法＝**150〜300ms・控えめ**（`prohibited.md` duration-500 禁止・常時ループ禁止）。
+- **`prefers-reduced-motion: reduce` は必須対応**（`prohibited.md`・melta 非交渉）。`global.css` の1箇所で transition/animation を実質無効化し、スケルトンの脈動も止める＝動きに敏感なユーザーへ即時表示。
+- **ホバーと選択は色で意味を分ける**：**ホバー＝中立スレートの縁取り**（一時の合図・触れているだけ）、**選択＝コーラル相当の強調**（確定）。重ね順は選択が上＝ホバー中かつ選択中は確定が勝つ。差し色（コーラル）は「点」使いのまま（§1）、ホバーに差し色を使わない（一時/確定の区別と点使いを守る）。地図の縁取り色は `mapTokens.ts` に集約（CSS変数を解さない別経路・§4）。
+- **ローディングはスケルトンで形を予告**（melta skeleton.md・`prohibited.md` スピナー単独の全画面禁止）：色は slate-200 固定（`--color-skeleton`）、`aria-busy`/`role=status`/sr-only を必須にする。
+
+---
+
+## 8. 検証（Feedback との接続）
 
 - 生成したUIは melta の `check_html`（MCP）で DESIGN.md 規約への適合を自己検証する。
 - melta-ui を取り込んで値（primary 等）を変えた場合、MCP の検証ルールとの整合を取る必要がある（`99_decision-register.md`）。

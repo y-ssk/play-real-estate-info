@@ -47,6 +47,9 @@
   --color-accent: var(--coral-600); /* 操作の塗り（白文字が乗る面）＝action。 */
   --color-accent-text: var(--white); /* accent 面に乗せる文字色。 */
   --color-accent-emphasis: var(--coral-500); /* 文字を載せない強調（選択リング・フォーカス）＝brand。 */
+  /* スケルトン面（melta skeleton.md＝slate-200 固定）。divider(slate-100) を流用せず専用に持つ
+     ＝melta「スケルトンは slate-200 のみ」を守り、用途が違う薄い面（行区切り）と取り違えない。 */
+  --color-skeleton: var(--slate-200);
 
   /* --- 用途層：密度トークン（DESIGN §3）。font ショートハンド（size/line-height・family）で持つ。 --- */
   /* 読ませる文章（カルテの説明・街の特徴）＝Breathable（DESIGN §3 body 相当）。 */
@@ -61,4 +64,10 @@
   /* radius（melta の段＝4px グリッド・DESIGN §0）。共通部品が参照する。 */
   --radius-sm: 3px;
   --radius-md: 4px;
+
+  /* モーション（melta 作法＝150〜300ms・控えめ・DESIGN モーション節／prohibited.md duration-500 禁止）。
+     遷移の程度（速さ・曲線）はここ1箇所で調整する＝部品/機能は数値を直書きせず参照する。 */
+  --motion-fast: 150ms; /* 小さな状態変化（ホバー・フォーカス）。 */
+  --motion-base: 200ms; /* パネルの開閉など標準の遷移。 */
+  --motion-ease: cubic-bezier(0.4, 0, 0.2, 1); /* 自然な加減速（標準イージング）。 */
 }
