@@ -27,20 +27,27 @@ export function MapView({
   children,
   interactiveLayerIds,
   onMapClick,
+  onMapMouseMove,
+  onMapMouseLeave,
 }: {
   children?: ReactNode;
   /** クリック可能なレイヤーの id（面塗り面）。これに当たった feature だけ event.features に載る。 */
   interactiveLayerIds?: string[];
   /** クリックイベント（合成点の App が feature.id から選択単位を取り出す）。 */
   onMapClick?: (e: MapLayerMouseEvent) => void;
+  /** マウス移動（App が feature からホバー中の単位コードを取る・クリックと同じ event 経路）。 */
+  onMapMouseMove?: (e: MapLayerMouseEvent) => void;
+  /** 地図外へ出た（App がホバーを外す）。 */
+  onMapMouseLeave?: () => void;
 }) {
   // style はレンダリングごとに作り直す必要がない（実質定数）ため memo 化する。
   const mapStyle = useMemo(() => createBaseStyle(), []);
   // 現在ズーム（表示用）。initialViewState は保ちつつ onMove で読み取るだけ（地図は非制御のまま）。
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
-  // カーソルは react-map-gl の既定（idle=grab／ドラッグ中=grabbing）に任せる。地図全面が区のため pointer を
-  // 強制すると常時 pointer になりドラッグ中の grabbing も潰れる（層4 指摘）。区が押せる合図は「ホバー強調
-  // （面+線が反応）」で担う＝カーソル上書きはしない。
+  // カーソル：**ホバー中は pointer（押せる合図）／つかんでドラッグ中は grabbing**（オーナー指定の挙動）。
+  // react-map-gl は canvas の cursor を `cursor` prop から毎レンダー適用するため、prop で制御する（レイヤー側で
+  // getCanvas().style.cursor を直接書いても上書きされ効かない＝層4 で判明）。ドラッグ中だけ grabbing に切替。
+  const [dragging, setDragging] = useState(false);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -56,6 +63,12 @@ export function MapView({
         onMove={(e) => setZoom(e.viewState.zoom)}
         interactiveLayerIds={interactiveLayerIds}
         onClick={onMapClick}
+        onMouseMove={onMapMouseMove}
+        onMouseLeave={onMapMouseLeave}
+        // ホバー=pointer／ドラッグ中=grabbing（つかんでいる手）。
+        cursor={dragging ? "grabbing" : "pointer"}
+        onDragStart={() => setDragging(true)}
+        onDragEnd={() => setDragging(false)}
       >
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />

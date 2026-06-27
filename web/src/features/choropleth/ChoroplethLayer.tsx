@@ -1,12 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import {
-  type FillLayer,
-  Layer,
-  type LineLayer,
-  type MapLayerMouseEvent,
-  Source,
-  useMap,
-} from "react-map-gl/maplibre";
+import { type FillLayer, Layer, type LineLayer, Source, useMap } from "react-map-gl/maplibre";
 import { useSelectionStore } from "../../lib/selection";
 import {
   CHOROPLETH_FILL_OPACITY_EXPR,
@@ -140,8 +133,16 @@ function buildFillLayer(min: number, max: number, scale: "sequential" | "divergi
  * データなし（status none/suppressed、value=null）は塗らない＝色抜き（ADR-0011）。
  *
  * @param metric 表示する指標キー（未指定は {@link DEFAULT_METRIC}）。
+ * @param hoveredId ホバー中の単位コード（5桁）。App が react-map-gl の onMouseMove で取り、ここで
+ *   feature-state `hover` に張り替える（選択と同じく「真実は外・ここは描画の鏡」）。
  */
-export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }) {
+export function ChoroplethLayer({
+  metric = DEFAULT_METRIC,
+  hoveredId,
+}: {
+  metric?: string;
+  hoveredId?: string | null;
+}) {
   const { current: map } = useMap();
   const { data: geometry } = useChoroplethGeometry();
   const { data: values } = useChoroplethValues(metric);
@@ -206,48 +207,28 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
     prevSelectedRef.current = next;
   }, [map, geometry, values, selectedUnit]);
 
-  // ホバー強調（スライス3.6）：面塗り面に乗った feature に feature-state `hover` を張り、面の淡い
-  // オーバーレイ＋中立 near-black の縁取りで示す（カーソルの pointer 化は MapView 側＝react-map-gl の
-  // `cursor` prop に乗せる）。一時の合図ゆえ状態は store に置かず effect 内ローカルで完結させる（選択＝確定は
-  // store の真実だが、ホバーは描画の鏡そのもので永続させる意味がない）。直前 hover id を覚え、別 feature へ移る/
-  // 地図外へ出るときに確実に外す（取り残し防止＝選択の prevSelectedRef と同じ流儀）。
-  // 地図エンジン依存（MapLibre のイベント）ゆえ jsdom では検証しづらく層4目視に委ねる（ユニットテストは作らない）。
+  // ホバー強調（スライス3.6）：App から渡る `hoveredId` に feature-state `hover` を張り替え、面の淡い
+  // オーバーレイ＋near-black の縁取りで「いま触れている区」を示す。**選択と同じく「真実は外（App の状態）・
+  // ここは描画の鏡」**に統一する（frontend-conventions §3）。
+  // なぜ App 経由か：旧実装は生の `map.on('mousemove', layer)` で張っていたが react-map-gl 配下では発火せず
+  // 層4 で全く反応しなかった（一方 react-map-gl の onClick は効きカルテは開いていた）。＝ホバーもクリックと
+  // 同じ react-map-gl のイベント（App の onMouseMove/Leave）に載せ、確実に発火させる。直前 id を覚えて確実に外す。
+  const prevHoverRef = useRef<string | null>(null);
   useEffect(() => {
     if (!map || !geometry) {
       return;
     }
     const m = map.getMap();
-    let hoveredId: string | null = null;
-    const setHover = (id: string | null) => {
-      if (hoveredId === id) {
-        return;
-      }
-      if (hoveredId) {
-        m.setFeatureState({ source: SOURCE_ID, id: hoveredId }, { hover: false });
-      }
-      if (id) {
-        m.setFeatureState({ source: SOURCE_ID, id }, { hover: true });
-      }
-      hoveredId = id;
-      // カーソル（pointer 化）はここで getCanvas().style.cursor を直接いじらない＝react-map-gl が
-      // 毎レンダーで canvas の cursor を `cursor` prop から再適用し上書きするため効かない。カーソルは
-      // MapView 側で react-map-gl の `cursor` prop ＋ onMouseEnter/Leave に乗せる（描画の流儀に合わせる）。
-    };
-    // 面塗り面（押せる層）の上だけを購読する＝基図や輪郭線は対象外（クリック対象と同じ層）。
-    const onMove = (e: MapLayerMouseEvent) => {
-      const f = e.features?.[0];
-      const id = f && typeof f.id === "string" ? f.id : null;
-      setHover(id);
-    };
-    const onLeave = () => setHover(null);
-    m.on("mousemove", FILL_LAYER_ID, onMove);
-    m.on("mouseleave", FILL_LAYER_ID, onLeave);
-    return () => {
-      m.off("mousemove", FILL_LAYER_ID, onMove);
-      m.off("mouseleave", FILL_LAYER_ID, onLeave);
-      setHover(null); // アンマウント/再購読時に取り残しとカーソルを戻す。
-    };
-  }, [map, geometry]);
+    const prev = prevHoverRef.current;
+    const next = hoveredId ?? null;
+    if (prev && prev !== next) {
+      m.setFeatureState({ source: SOURCE_ID, id: prev }, { hover: false });
+    }
+    if (next) {
+      m.setFeatureState({ source: SOURCE_ID, id: next }, { hover: true });
+    }
+    prevHoverRef.current = next;
+  }, [map, geometry, hoveredId]);
 
   // 取得前・失敗時は Source を出さない（基図のみで壊れない・タスクのローディング方針）。
   if (geometry === undefined) {

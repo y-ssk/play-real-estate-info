@@ -130,13 +130,14 @@ export const CHOROPLETH_HOVER_FILL_COLOR: FillColor = "#0f172a";
 /**
  * ホバーオーバーレイの不透明度式：feature-state `hover` が真の自治体だけ淡く重ね、他は0（重ねない）。
  *
- * 0.12＝データ色・基図が透けて読める淡さ（0.10〜0.15 の中庸）。輪郭線（{@link CHOROPLETH_HOVER_OUTLINE_WIDTH}）と
+ * 0.28＝「ポリゴンの色がはっきり切り替わった」と分かる濃さ（層4 で 0.12 は淡すぎて気付けないと判明）。
+ * データ色は残しつつ near-black を重ねて明確に沈ませる。輪郭線（{@link CHOROPLETH_HOVER_OUTLINE_WIDTH}）と
  * 同じ `hover` フラグで連動＝マウスが乗った自治体だけ面+線が一緒に強調される。式はトークンに集約（§4）。
  */
 export const CHOROPLETH_HOVER_FILL_OPACITY_EXPR: FillOpacity = [
   "case",
   ["==", ["feature-state", "hover"], true],
-  0.12,
+  0.28,
   0,
 ];
 
