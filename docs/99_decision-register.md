@@ -76,7 +76,7 @@
 | データソース振り分け | XIT/XCT→ETL、XPT→両用、XKT/XGT/XST→タイル | `02` |
 | ETL設計要件 | レート制御・冪等性・再開可能性・出典保持・欠損検知 | `02` |
 | 空間単位 | MVPは市区町村、v1でメッシュ | `01` `02` |
-| フロント・スタイル土台 | Tailwind＋melta-ui（MIT）の設計仕様書を取り込んだDS | `02` `DESIGN` |
+| フロント・スタイル土台 | **CSS変数の3層トークン（生値→意味→用途）**＋melta-ui（MIT）取り込みDS。**Tailwindは不採用**（`ADR-0013`記録の乖離を`ADR-0027`で是正）。ダークは意味層差し替え1箇所で後付け・地図paintのみ`mapTokens.ts`別経路 | `02`§7 `DESIGN`§1§4 `ADR-0027` |
 | デザインDS方針 | melta-uiを背骨に取り込み、思想は継承し値を固有調整 | `DESIGN` |
 | melta-uiライセンス | MIT。取り込み部分に著作権表示・ライセンス文を保持すれば改変・公開可 | `DESIGN` |
 | melta-ui取り込み方式 | 資産層コピー方式（必要な仕様書md/tokens.json/prohibited.mdを自リポジトリにコピーして改変）。元クローンは手元の見本として保持 | `DESIGN` `README` |
@@ -131,6 +131,7 @@
 | パッケージ管理・Node版（足場） | **pnpm**（Node同梱`corepack`で版固定＝`package.json`の`packageManager`欄）。採用根拠は速さでなく**幽霊依存（宣言してない間接依存をimportできる罠）を構造的に弾く堅牢性**。npmは平坦`node_modules`で幽霊依存を許す/corepackで優位消滅・yarnは却下。**Node版＝`.nvmrc`＋`engines`**（現行LTS・最新LTSは実装時に公式確認）。お作法＝`frontend-conventions`§11 | `ADR-0021` `frontend-conventions`§11 `notes/2026-06-25-package-managers` |
 | N03境界の投入機構（足場/ETL入口） | **ハイブリッド**＝投入(シェープ→PostGIS=機械的)は**外部ローダ**／正規化(5桁コード化・年度固定・値域=本丸)は**SQL・Go**(継ぎ目=投入ツール非依存)。取得=年1回低頻度ゆえ直リンクscriptで半自動。Go全実装は周辺過剰で却下。お作法＝`backend-conventions`§5 | `ADR-0022` `backend-conventions`§5 `ADR-0014` `notes/2026-06-25-n03-ingest` |
 | N03投入経路（ローダの調達・実行経路） | **使い捨ての別コンテナ＝案A**：投入時だけ GDAL公式イメージ`ghcr.io/osgeo/gdal`から`docker run --rm`で立て→同一network越しにDBへ→終了後破棄。**DBイメージは公式のまま改変しない**(攻撃面最小・再現性・役割分離)。**ローダ＝`ogr2ogr`**(GDAL公式に同梱で入手素直・N03はシェープゆえ十分)。案B(DBイメージ同居)/案C(端末直)は却下。継ぎ目ゆえ可逆。実物確認(イメージ中身・`.prj`/`.dbf`)は投入実装時 | `ADR-0023` `ADR-0022` `backend-conventions`§5 `notes/2026-06-25-n03-ingest-path` |
+| FEスタイル土台＝CSS変数3層トークン／差し色コーラルhex確定 | **土台＝CSS変数（カスタムプロパティ）の3層トークン**（生値→意味→用途・定義は`web/src/styles/`の`:root`）。共通部品は用途トークンだけ参照（`DESIGN`§4）。**ダークは`body.dark`の意味層差し替え1箇所で後付け（cascade・部品不変）**＝MVPはライトのみ。**Tailwindは不採用**（`ADR-0013`が「Tailwind」と記録も未導入＝依存/攻撃面最小の方針で実態に合わせ更新）。TSトークンモジュールはダーク配り直しが重く不採用。**差し色コーラル＝候補B(クラシック)で確定**：`--coral-600 #D6443A`(action・白文字AA適合)／`--coral-500 #F2615A`(brand・選択リング/ピン)。暖色オレンジは土砂災害データ色と競合で不採用。きっかけ＝スライス3.5で記録と実態の乖離＋コーラルhex未記録が判明 | `ADR-0027` `ADR-0013`(更新元) `DESIGN`§1§4 `02`§7 |
 | N03投入の運用形態（再現可能にどう回すか） | **薄いscript＋Makefile入口**(`scripts/ingest-n03.sh`＝GDAL公式を`docker run --rm --network=host`／入口`make ingest-n03`＝migrate流儀・env駆動・echo抑制・`source config.env`)。**正規化＝Go`cmd/ingest`**(本丸・層1テスト)・`n03_raw`中継。**配置規約＝`data/n03/{YEAR}/{PREF}/`**(fetchで展開・ingestはそこから読む・`temp/`廃止・`data/`はgitignore)。**冪等＝都県単位DELETE→INSERT**。**手順書＝`docs/runbooks/n03-ingest.md`新設**(README導線1行)。手打ち/psql正規化/compose即サービス化は却下/保留。死守＝AIはconfig.env不可触・起動はオーナー・パスワード非露出 | `ADR-0024` `ADR-0023` `backend-conventions`§5.1 `CLAUDE.md`地図 |
 
 ---
@@ -169,7 +170,7 @@
 | 2b' | 交通＝駅点オーバーレイ（重ね・XKT015再利用） | F1(重ね)/S1 | 駅点(座標＋乗降客数)を重ねレイヤーで表示（`ADR-0016` 塗り絵/生レイヤー機構とセット）。具体形は保留 | **形は保留**（ホバー数値/半径圏/最寄り距離 等＝`ADR-0026`）。重ね機構の実装が前提。MVP/v1割付は feature 兼ね合いで判断 | 🔲♻ |
 | 2c | 将来人口増減率(2020→2050)を面塗り（将来＝主軸・発散配色） | F2(将来)/S1 | `fetch-xkt013.sh`(z11×24枚スイープ・self-source)・`cmd/ingest -metric=pop_change_rate_2020_2050 -data=...`(XKT013タイル群をストリーム集計)・`/values`(既存)・`metrics.ts`(指標registry・配色方式)・`mapTokens`発散ランプ | 増減率で**発散色分け(0%中央・紫↔緑)**／凡例も中央0%／**推計を明示**(`ADR-0009`)／データなし色抜き・分母0=none(`ADR-0011`)。集計＝MESH_ID重複排除・SHICODE上2桁13・ΣPTN_2050/ΣPTN_2020−1。指標トグルで2aと切替。層1=純関数test+実行後アサート(中央区+24.7%)・層4目視 | 🔲 実装済(要層4目視) |
 | 3 | 区を選ぶとカルテが出る | F5/S1 | `GET /api/karte?unit_id=`(1単位×全指標・sqlc `GetAdminUnit`＋`ListUnitMetrics`)・選択 Zustand `useSelectionStore`(`{unitKind,unitId}`・`ADR-0018`)・地図クリック結線(`interactiveLayerIds`=面塗り面→`feature.id`)・`KartePanel`(③開閉式・`DESIGN`§2)・`metrics.ts` registry 流用 | 選択でパネルに数値＋単位＋出典／**データなし3区別を表示し分け**(none=データなし/suppressed=秘匿/present=値・0含む)／**推計を明示**(`ADR-0009`)。層1=純関数test(`buildKarte` null可変換・year・出典・空配列／選択store)・FEはパネル描画/3区別/推計をモックで／層4目視(クリック→カルテ・閉じる→地図全面) | 🔲 実装済(要DB起動の層4目視) |
-| 3.5 | 共通部品層＋アイコン整備（DESIGN実体化） | S1全般/DESIGN | `web/src/components`に melta-ui `components`指針準拠の共通部品（入力/範囲スライダー/テーブル/パネル/ボタン）＋**アイコンはLucide導入**（DESIGN §6思想＝最小SVG）＋**差し色コーラルhex確定**（DESIGN §1仮確定の決着） | 素の見た目を脱し、以降の画面が部品を再利用（④以降の前提）。層3 | 🔲 **次** |
+| 3.5 | 共通部品層＋アイコン整備（DESIGN実体化） | S1全般/DESIGN | **土台＝CSS変数3層トークンを`web/src/styles/`に新設（`ADR-0027`確定・ライトのみ）**→`web/src/components`に用途トークン参照の共通部品＋**アイコンはLucide導入**（DESIGN §6＝最小SVG）。**差し色コーラルhex確定済**＝action`#D6443A`/brand`#F2615A`（`ADR-0027`）。**スコープ＝現存画面が消費する部品を先に＝Button/Panel＋既存KartePanel/MetricToggleをトークン＋コーラル＋Lucideへ移行**。**Input/Table/範囲スライダーは消費する画面（④絞り込み/一覧・⑤検索）の再定義で実需が見えてから同パターンで**（④の教訓＝消費先なきUIの先回りを避ける） | 素の見た目を脱し、以降の画面が部品を再利用（④以降の前提）。層3 | 🔲 **着手中**（土台確定・実装委譲へ） |
 | 4 | ~~条件で絞り込み→一覧表示で終わり~~ → **再定義して作り直し** | F3・F7→**カルテ/ピンに繋ぐ**/S1 | 共通部品(3.5)＋`/spec-change`で仕様再定義 | **#42はクローズ（作り直し）**。層4で判明＝(1)一覧だけなら不要・結果はカルテ/ピンへ繋ぐ (2)範囲スライダー・%/符号対応 (3)ヘッダ固定(折返し/ソートで配置が動かない) (4)Lucideソートアイコン (5)コーラル/部品。純ロジック(filtering.ts)は再利用可。仕様は`/spec-change`で正(docs/05)へ | 🔁 再定義 |
 | 5 | 地名で逆引き→該当エリアへ | F4/S0・S1 | `admin_unit` name/code 検索 | 名前→エリア選択（層4） | 🔲 |
 | 6 | ピン留め（端末内保存） | F6/S1 | FEのみ（Zustand persist・localStorage） | ピン保持・再訪（層4） | 🔲 |
@@ -218,7 +219,7 @@
 | docs全体の分類見直し（番号doc・種別ディレクトリの整理統合） | **フェーズ移行時に点検**（H領域）。「ベース番号docは安易に増やさない・増やすなら統廃合とセット」が原則。番号doc(01/02/04/05/99)が増えた／種別ディレクトリ(adr/notes/runbooks)が肥大した時に分類を見直す。索引は `CLAUDE.md` 地図 |
 | ~~S1 地図探索ビューの内部構成（パネル内包 vs 別ページ遷移）~~ | **確定＝パネル内包**（段1スライス③・カルテパネル実装時）。カルテを③開閉式（`DESIGN`§2）で実装＝S1内はパネル開閉＝“状態”（選択 Zustand・`ADR-0018`）であって画面遷移ではない。別ページ遷移は採らない＝`docs/05`§4 遷移図はそのまま有効（カルテの置き方＝S1内・右側固定パネルも同時確定）。下の確定索引へ |
 | トップ S0 の具体構成・ナビ/メニュー項目 | **S0実装／UI設計時**。3起点(地名逆引き/地図/条件)のレイアウト・既定=地図・ナビ項目(分野切替/ピン/about)の並び。詳細モックは作らず実装直前に（`docs/05`§1§8） |
-| melta-ui トークン層の材料化（単一情報源化） | **トークンが複数箇所で要る／DS本格化時**。発見（段1④）＝`melta-ui/tokens/tokens.json` は通常ファイルで中身が `../design/contracts/tokens.json`（参照先が存在しない dangling・取り込み時の不整合）。CSS トークン層が未整備で、MapLibre paint 値は `web/src/styles/mapTokens.ts` に slate-400 等を手写しで集約（MVP許容）。将来 melta トークンを正規に解決可能にし、色/太さの単一情報源へ寄せる（手写しの二重管理を解消）。MapLibre は CSS変数を解さないため、トークン→paint値の橋渡し方も併せて決める |
+| melta-ui トークン層の材料化（単一情報源化） | **一部着手（`ADR-0027`／スライス3.5）＝UI側のCSSトークン層を新設**（`web/src/styles/`の`:root`に3層トークン）。残件＝**`mapTokens.ts`（地図paint値の手写し）をCSS変数の単一情報源へ寄せる**＝MapLibreはCSS変数を解さないため「CSS変数→paint値の橋渡し」を決める（JS側で`getComputedStyle`等で解決 or ビルド時生成）。`melta-ui/tokens/tokens.json` のdangling（中身が`../design/contracts/tokens.json`）は引き続き不使用＝自前CSS層を権威とする。トリガー＝二重管理が痛む／ダーク本格化時 |
 | 機種依存文字（絵文字）排除の範囲拡大（UI→ドキュメント/リポジトリ全体） | **いずれ対応（優先度低）**。現状ルールは FE/UI 限定（`DESIGN.md`§6・`frontend-conventions`§4）。本意はリポジトリ全体で機種依存文字を避けたいが、`docs/99` の状態マーカー（✅/🔲/♻）は機能的・実害小のため一掃は当面見送り（A維持）。拡大時＝conventions/DESIGN の文言を「UI・ドキュメント問わず」に直し、README の `✅`・本表の状態記号・ADR等の `⚠` を非絵文字へ置換 |
 | テスト方針（特にETLの正しさ） | ETL基盤着手時 |
 | エラー/データ欠損のUI表現 | UI設計時（優先度高） |
