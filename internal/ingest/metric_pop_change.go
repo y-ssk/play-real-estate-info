@@ -262,7 +262,7 @@ type PopChangeResult struct {
 //   - SHICODE が admin_unit に在る行だけ INSERT（FK 担保＝ADR-0014 マスタに在るコードのみ採用）。
 //   - admin_unit にあって集計データが無い東京の市区町村（島嶼等で未取得）は status=none・値なしで埋める
 //     （データなし3区別・ADR-0011：「未調査」と「率0」を混同させない）。
-//   - 冪等：metric 単位 DELETE→INSERT。実行後アサート（千代田 +15%・件数妥当・上2桁13 等）で層1を守る。
+//   - 冪等：metric 単位 DELETE→INSERT。実行後アサート（中央区 +24.7%・件数妥当・上2桁13 等）で層1を守る。
 //
 // dataDir は data/xkt013/<vintage>/13 のような「タイル群が並ぶディレクトリ」。鍵・取得は要らず
 // （ファイルは fetch-xkt013.sh が用意済み）DB 接続のみ＝層1検証を取得の不確実性から切り離す。
@@ -435,8 +435,8 @@ func tokyoAdminCodes(ctx context.Context, tx pgx.Tx) ([]string, error) {
 //
 // 検証項目：(1) 投入>0 (2) present>0（全件 none は集計失敗の兆候） (3) 全 unit_id が上2桁=13
 // (4) present の率が現実的範囲（-1<率<10＝半世紀で人口が消える/11倍超は算出バグの兆候）
-// (5) present は value 必須・none は value=NULL（CHECK と二重防御） (6) サンプル（千代田 13101）の率が
-// 偵察値 +15% 近傍（集計ロジックの取り違え検出）。
+// (5) present は value 必須・none は value=NULL（CHECK と二重防御） (6) サンプル（中央区 13102）の率が
+// 想定 +24.7% 近傍（集計ロジックの取り違え検出。偵察と全集計が一致する安定値）。
 func assertPopChange(ctx context.Context, tx pgx.Tx, res PopChangeResult) error {
 	if res.Inserted <= 0 {
 		return fmt.Errorf("投入件数が0。admin_unit(pref 13) とタイルの取得を確認")
@@ -480,22 +480,22 @@ WHERE metric = $1 AND status = 'present'`, popChangeMetricKey).Scan(&minV, &maxV
 		return fmt.Errorf("増減率が現実的範囲外（min=%.4f max=%.4f）。ΣPTN/比の算出を確認", minV, maxV)
 	}
 
-	// サンプル：千代田区(13101) は偵察で +15.0% 近傍。±5ポイント以内なら集計ロジック健全とみなす
-	// （厳密一致でなく近傍＝N03 年度差やメッシュ取得範囲の微差を許容しつつ取り違えは弾く）。
+	// サンプル＝中央区(13102)。偵察(部分タイル)と全タイル集計が一致した安定値ゆえ取り違え検出の基準にする
+	// （千代田13101は全集計で+19.7%＝偵察の部分値+15%とずれ基準に不適）。許容±5ポイント＝年度差等を吸収しつつ取り違えは弾く。
 	var sampleRate *float64
 	var sampleStatus string
 	err := tx.QueryRow(ctx,
-		`SELECT value, status FROM metric_value WHERE metric = $1 AND unit_id = '13101'`,
+		`SELECT value, status FROM metric_value WHERE metric = $1 AND unit_id = '13102'`,
 		popChangeMetricKey).Scan(&sampleRate, &sampleStatus)
 	switch {
 	case err == pgx.ErrNoRows:
-		// 13101 が admin_unit に無い（pref 13 未投入等）。件数・値域は通過済みゆえ警告に留めず成功扱い。
+		// 13102 が admin_unit に無い（pref 13 未投入等）。件数・値域は通過済みゆえ警告に留めず成功扱い。
 	case err != nil:
-		return fmt.Errorf("サンプル(13101)の取得に失敗: %w", err)
+		return fmt.Errorf("サンプル(13102)の取得に失敗: %w", err)
 	case sampleStatus == "present" && sampleRate != nil:
-		const wantChiyoda = 0.15
-		if math.Abs(*sampleRate-wantChiyoda) > 0.05 {
-			return fmt.Errorf("千代田(13101)の増減率が偵察値+15%%から乖離（実=%.3f）。集計ロジックを確認", *sampleRate)
+		const wantChuo = 0.247 // 中央区 2020→2050 の増減率（再開発で増・実データ全集計値）。
+		if math.Abs(*sampleRate-wantChuo) > 0.05 {
+			return fmt.Errorf("中央区(13102)の増減率が想定+24.7%%から乖離（実=%.3f）。集計ロジックを確認", *sampleRate)
 		}
 	}
 

@@ -47,7 +47,7 @@ func TestAddTile_ExtractsOnlyFourKeys(t *testing.T) {
 	t.Parallel()
 	acc := newPopChangeAccumulator()
 	tile := tileJSON(
-		mesh("5339001", "13101", 100, 115), // 千代田相当：+15%
+		mesh("5339001", "13101", 100, 115), // 合成データ（100→115＝式の検証用・実データの千代田ではない）
 		mesh("5339002", "13101", 100, 115),
 	)
 	if err := acc.addTile(strings.NewReader(tile)); err != nil {
@@ -109,7 +109,7 @@ func TestAddMesh_PrefFilter(t *testing.T) {
 	}
 }
 
-// TestRates_ComputesRate は増減率 = Σ2050/Σ2020 − 1 を確かめ、千代田相当が +15% になることを見る。
+// TestRates_ComputesRate は増減率 = Σ2050/Σ2020 − 1 の式と、上2桁≠13の除外を合成データで確かめる。
 func TestRates_ComputesRate(t *testing.T) {
 	t.Parallel()
 	acc := newPopChangeAccumulator()
