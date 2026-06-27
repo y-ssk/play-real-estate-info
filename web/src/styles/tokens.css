@@ -1,0 +1,64 @@
+/*
+ * CSS変数の3層トークン（DESIGN §1/§4・ADR-0027）。スタイルの単一情報源。
+ *
+ * なぜ3層か：生値→意味→用途を分けると、密度調整もダーク後付けも「意味層の1箇所」で全画面に効く
+ * （部品は生値を直書きせず用途/意味トークンだけ参照する＝DESIGN §4）。共通部品（components/）と
+ * 機能側（features/）は色名（--slate-* / --coral-*）を直接書かず、意味層（--color-*）か
+ * 用途層（--text-* 等）を参照する。
+ *
+ * 地図（MapLibre）は CSS 変数を解さないため対象外＝paint 値は styles/mapTokens.ts が別経路で担う
+ * （DESIGN §4・ADR-0027）。ここで地図色を再定義しない（二重管理しない）。
+ *
+ * ダーク：MVP はライトのみ実装（DESIGN §5・ADR-0027）。意味層を介す構造だけ整え、dark の値ブロックは
+ * 今は書かない（デッドコードにしない）。後付け時は `body.dark { --color-* を差し替え }` の1ブロックで
+ * cascade により全子孫へ届き、部品コードは不変。
+ */
+
+:root {
+  /* --- 生値層（パレット）：melta-ui のスレート系＋差し色コーラル（ADR-0027 で hex 確定）。 --- */
+  /* スレート系（黒子＝背景・テキスト・枠・非アクティブ。画面の大半・DESIGN §1）。Tailwind slate と同値。 */
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+  --slate-200: #e2e8f0;
+  --slate-100: #f1f5f9;
+  --slate-50: #f8fafc;
+  --white: #ffffff;
+
+  /* コーラル（差し色＝操作の一点。狭い面積で「点」使い・DESIGN §1）。brand/action の2段スケール。 */
+  --coral-600: #d6443a; /* action＝白文字が乗る面（ボタン・選択中）。白文字コントラスト ≈ 4.5:1 で AA 適合。 */
+  --coral-500: #f2615a; /* brand＝文字を載せない強調（選択リング・フォーカス・地図ピン）。 */
+
+  /* --- 意味層：役割で命名（生値を指す）。部品/機能はここを参照し、生値を直書きしない。 --- */
+  --color-bg: var(--slate-50); /* ページ地（黒子の最下層）。 */
+  --color-surface: var(--white); /* カード/パネル面（前面の収束面）。 */
+  --color-text: var(--slate-900); /* 本文の主色（純黒は避ける・prohibited.md）。 */
+  --color-text-strong: var(--slate-800); /* 見出し・強い文字。 */
+  --color-text-label: var(--slate-600); /* 一覧の項目名（本文より一段弱い中間調）。 */
+  --color-text-muted: var(--slate-500); /* 補助文・出典など弱い文字。 */
+  --color-text-faint: var(--slate-400); /* 値ではない印（データなし等）＝薄く、「0」と区別。 */
+  --color-border: var(--slate-200); /* 標準の境界線（淡く・prohibited.md「薄すぎ/濃すぎ」回避）。 */
+  --color-border-strong: var(--slate-300); /* 強調の境界（控えめなボタン枠など）。 */
+  --color-divider: var(--slate-100); /* 行区切りなど更に薄い分割。 */
+  --color-accent: var(--coral-600); /* 操作の塗り（白文字が乗る面）＝action。 */
+  --color-accent-text: var(--white); /* accent 面に乗せる文字色。 */
+  --color-accent-emphasis: var(--coral-500); /* 文字を載せない強調（選択リング・フォーカス）＝brand。 */
+
+  /* --- 用途層：密度トークン（DESIGN §3）。font ショートハンド（size/line-height・family）で持つ。 --- */
+  /* 読ませる文章（カルテの説明・街の特徴）＝Breathable（DESIGN §3 body 相当）。 */
+  --text-prose: 18px / 2 system-ui, sans-serif;
+  /* データを詰める一覧（数値一覧・ピン留め）＝既定（DESIGN §3 body-sm 相当）。 */
+  --text-data: 15px / 1.5 system-ui, sans-serif;
+  /* 見出し（パネル名称など）。 */
+  --text-heading: 600 18px / 1.4 system-ui, sans-serif;
+  /* 小さな注記（出典・操作ラベル）＝caption 相当。 */
+  --text-caption: 12px / 1.4 system-ui, sans-serif;
+
+  /* radius（melta の段＝4px グリッド・DESIGN §0）。共通部品が参照する。 */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+}

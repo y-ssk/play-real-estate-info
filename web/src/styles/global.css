@@ -1,9 +1,17 @@
-/* 段0 の最小リセット。トークン/melta-ui 取り込みは段1以降（DESIGN §0・§4）。
-   地図を全画面に敷くため html/body/#root を 100% 高さにする。 */
+/* CSS変数トークン層を読む（3層＝生値→意味→用途・ADR-0027）。最初に読み込み :root に定義する。 */
+@import "./tokens.css";
+
+/* 最小リセット。地図を全画面に敷くため html/body/#root を 100% 高さにする。
+   既定の本文色/地は意味トークン経由（DESIGN §4・後付けのダークが意味層1箇所で効く）。 */
 html,
 body,
 #root {
   height: 100%;
   margin: 0;
   padding: 0;
+}
+
+body {
+  color: var(--color-text);
+  background: var(--color-bg);
 }

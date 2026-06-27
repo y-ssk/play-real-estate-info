@@ -52,6 +52,11 @@ function stubFetch(body: unknown, ok = true, status = 200): void {
   }) as unknown as typeof fetch;
 }
 
+// 解決しない fetch ＝ useKarte が読込中（data 未確定）のまま留まる状態を作る（ローディングの退行防止用）。
+function stubPendingFetch(): void {
+  globalThis.fetch = jest.fn().mockReturnValue(new Promise(() => {})) as unknown as typeof fetch;
+}
+
 function renderWithClient(ui: ReactNode) {
   const client = createQueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
@@ -67,6 +72,20 @@ describe("KartePanel", () => {
   it("未選択ではパネルを出さない（③閉＝地図全面）", () => {
     renderWithClient(<KartePanel />);
     expect(screen.queryByRole("complementary")).toBeNull();
+  });
+
+  it("読込中（data 未確定）に生の5桁コードをタイトルへ出さない（ローディングの正しさ）", () => {
+    // fetch が解決しない＝useKarte は isLoading のまま data 未確定。以前は selected.unitId（5桁コード）を
+    // タイトルに仮表示し、区を選び直すたび数字がチラついた。プレースホルダ（スケルトン）に置き換えた退行防止。
+    stubPendingFetch();
+    renderWithClient(<KartePanel />);
+    act(() => useSelectionStore.getState().select({ unitKind: "municipality", unitId: "13112" }));
+
+    // パネル（complementary）は出るが、生コードはどこにも描画されない。
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+    expect(screen.queryByText("13112")).toBeNull();
+    // 読込中でも閉じられる（IconButton X は常に出す）。
+    expect(screen.getByLabelText("カルテを閉じる")).toBeInTheDocument();
   });
 
   it("選択するとカルテを開き、名称・値・単位・出典を出す（ADR-0011）", async () => {
