@@ -1,3 +1,7 @@
+import { X } from "lucide-react";
+import type { CSSProperties } from "react";
+import { IconButton } from "../../components/IconButton";
+import { Panel } from "../../components/Panel";
 import type { Karte, KarteMetric } from "../../lib/karte";
 import { useSelectionStore } from "../../lib/selection";
 import { METRICS } from "../choropleth/metrics";
@@ -13,10 +17,12 @@ import { useKarte } from "./useKarte";
  * 表示（ADR-0011 骨組み）：名称＋各指標の「見出し数値＋単位＋出典」。指標名/単位/整形は
  * features/choropleth/metrics.ts の registry を流用し二重管理しない（frontend-conventions §5）。
  * データなし3区別（present/none/suppressed）を見た目で分け（ADR-0011）、推計指標は「推計」を出典で明示（ADR-0009）。
- * 状態の真実は Zustand（ADR-0018）。データを詰めるため本文は body-sm 相当（15px・DESIGN §3）。
+ * 状態の真実は Zustand（ADR-0018）。データを詰めるため本文は body-sm 相当（text-data・DESIGN §3）。
  *
- * 色について：差し色（コーラル・DESIGN §1）は hex 未確定ゆえ使わず、確定済みのスレート系（黒子）だけで
- * 構成する（MetricToggle と同方針・melta-ui コンポーネント層の取り込み後に差し色へ昇格＝docs/99 トリガー）。
+ * 構成：surface 面の器は共通部品 {@link Panel}（melta card.md）を aside で包む（complementary ロールを保つ）。
+ * 閉じるは Lucide の X アイコンボタン（{@link IconButton}・DESIGN §6 SVG／絵文字不使用）。色は黒子のスレート
+ * 中心で、差し色（コーラル）はカルテ本体では点使いの対象が無いため出さない（操作色はトグル/フォーカス・DESIGN §1）。
+ * 生値（hex）は書かず意味/用途トークンを参照する（ADR-0027/DESIGN §4）。
  *
  * 申し送り（モバイル）：本パネルは PC の右側固定パネル。モバイルでは DESIGN §2 のボトムシート
  * （下から引き上げ）へ退避させる＝同じ「開閉＝状態」のメンタルモデルを保つ。レイアウト分岐は PC 実装後に足す。
@@ -32,36 +38,35 @@ export function KartePanel() {
   }
 
   return (
-    <aside
-      // 右側の固定パネル（PC・DESIGN §2 開いた状態）。地図の上に重ねる（兄弟オーバーレイ＝App が合成）。
-      style={PANEL_STYLE}
-      aria-label="エリアカルテ"
-    >
-      <header style={HEADER_STYLE}>
-        {/* 名称は表示用（結合はコード・ADR-0014）。取得前は選択中コードを仮表示し空白を避ける。 */}
-        <h2 style={TITLE_STYLE}>{data?.name ?? selected.unitId}</h2>
-        <button type="button" onClick={clear} style={CLOSE_STYLE} aria-label="カルテを閉じる">
-          閉じる
-        </button>
-      </header>
+    // 右側の固定パネル（PC・DESIGN §2 開いた状態）。地図の上に重ねる（兄弟オーバーレイ＝App が合成）。
+    // surface 面の器は共通部品 Panel。aside で包み complementary ロールと位置取り（固定/スクロール）を担う。
+    <aside style={ASIDE_STYLE} aria-label="エリアカルテ">
+      <Panel style={INNER_STYLE}>
+        <header style={HEADER_STYLE}>
+          {/* 名称は表示用（結合はコード・ADR-0014）。取得前は選択中コードを仮表示し空白を避ける。 */}
+          <h2 style={TITLE_STYLE}>{data?.name ?? selected.unitId}</h2>
+          {/* 閉じる＝Lucide X（DESIGN §6 SVG・aria-label 必須）。選択を解除し地図全面へ戻す（③開閉式）。 */}
+          <IconButton icon={X} label="カルテを閉じる" onClick={clear} />
+        </header>
 
-      {isLoading && <p style={NOTE_STYLE}>読み込み中…</p>}
-      {isError && <p style={NOTE_STYLE}>カルテの取得に失敗しました。</p>}
+        {isLoading && <p style={NOTE_STYLE}>読み込み中…</p>}
+        {isError && <p style={NOTE_STYLE}>カルテの取得に失敗しました。</p>}
 
-      {data && (
-        <div>
-          {data.metrics.length === 0 ? (
-            // 指標がまだ無い単位（島嶼等）。単位は実在するが素性は未整備＝黙って空にしない（ADR-0011）。
-            <p style={NOTE_STYLE}>この単位の指標はまだありません。</p>
-          ) : (
-            <ul style={LIST_STYLE}>
-              {data.metrics.map((m) => (
-                <MetricRow key={m.metric} metric={m} />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+        {data && (
+          <div>
+            {data.metrics.length === 0 ? (
+              // 指標がまだ無い単位（島嶼等）。単位は実在するが素性は未整備＝黙って空にしない（ADR-0011）。
+              <p style={NOTE_STYLE}>この単位の指標はまだありません。</p>
+            ) : (
+              <ul style={LIST_STYLE}>
+                {data.metrics.map((m) => (
+                  <MetricRow key={m.metric} metric={m} />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </Panel>
     </aside>
   );
 }
@@ -119,27 +124,35 @@ function MetricValueText({ metric }: { metric: KarteMetric }) {
   );
 }
 
-// --- スタイル（生値直書きは MetricToggle と同方針＝melta-ui コンポーネント層の取り込み前。色はスレート系・
-//     密度は body-sm 相当＝DESIGN §1/§3。コンポーネント層取り込み後にトークン参照へ寄せる・docs/99）。 ---
+// --- スタイル（意味/用途トークン参照・ADR-0027/DESIGN §4。生値は書かない）。 ---
 
-const PANEL_STYLE: React.CSSProperties = {
+// aside＝位置取り（右側固定・スクロール・重なり順）。surface の見た目は Panel が担う（INNER_STYLE で上書き）。
+const ASIDE_STYLE: CSSProperties = {
   position: "absolute",
   top: 0,
   right: 0,
   bottom: 0,
   width: 360,
   maxWidth: "90vw",
-  padding: 16,
-  background: "#ffffff",
-  borderLeft: "1px solid #e2e8f0", // slate-200（黒子の境）。全周ボーダーは付けない（DESIGN no-decoration）。
+  // 影は控えめ（prohibited.md shadow-lg 禁止・オーバーレイは弱く）。
   boxShadow: "-2px 0 8px rgba(15,23,42,0.08)",
   overflowY: "auto",
   zIndex: 2, // ズーム表示(1)・トグル(1)より上（パネルは前面の収束面）。
-  color: "#334155", // slate-700（本文色）。
-  font: "15px/1.5 system-ui, sans-serif", // body-sm 相当（データを詰める場所・DESIGN §3）。
 };
 
-const HEADER_STYLE: React.CSSProperties = {
+// Panel 既定の border/radius を、地図右端に貼り付く全画面高さのパネル用に左境界線だけへ寄せる
+// （全周ボーダー/角丸は地図端では不要・prohibited.md no-decoration）。本文は text-data（詰める・DESIGN §3）。
+const INNER_STYLE: CSSProperties = {
+  minHeight: "100%",
+  padding: 16,
+  border: "none",
+  borderLeft: "1px solid var(--color-border)",
+  borderRadius: 0,
+  color: "var(--color-text)",
+  font: "var(--text-data)",
+};
+
+const HEADER_STYLE: CSSProperties = {
   display: "flex",
   alignItems: "baseline",
   justifyContent: "space-between",
@@ -147,54 +160,43 @@ const HEADER_STYLE: React.CSSProperties = {
   marginBottom: 12,
 };
 
-const TITLE_STYLE: React.CSSProperties = {
+const TITLE_STYLE: CSSProperties = {
   margin: 0,
-  font: "600 18px/1.4 system-ui, sans-serif", // 名称は見出し（読ませる・DESIGN §3）。
-  color: "#1e293b", // slate-800。
+  font: "var(--text-heading)", // 名称は見出し（読ませる・DESIGN §3）。
+  color: "var(--color-text-strong)",
 };
 
-const CLOSE_STYLE: React.CSSProperties = {
-  padding: "4px 10px",
-  borderRadius: 3,
-  border: "1px solid #cbd5e1", // slate-300。差し色は使わない（hex 未確定・上 doc 参照）。
-  background: "transparent",
-  color: "#334155",
-  font: "12px/1.4 system-ui, sans-serif",
-  cursor: "pointer",
-  flexShrink: 0,
-};
+const NOTE_STYLE: CSSProperties = { margin: "8px 0", color: "var(--color-text-muted)" };
 
-const NOTE_STYLE: React.CSSProperties = { margin: "8px 0", color: "#64748b" }; // slate-500（補助文）。
+const LIST_STYLE: CSSProperties = { listStyle: "none", margin: 0, padding: 0 };
 
-const LIST_STYLE: React.CSSProperties = { listStyle: "none", margin: 0, padding: 0 };
-
-const ROW_STYLE: React.CSSProperties = {
+const ROW_STYLE: CSSProperties = {
   padding: "10px 0",
-  borderBottom: "1px solid #f1f5f9", // slate-100（行区切り・薄く）。
+  borderBottom: "1px solid var(--color-divider)", // 行区切り（薄く）。
 };
 
-const ROW_HEAD_STYLE: React.CSSProperties = {
+const ROW_HEAD_STYLE: CSSProperties = {
   display: "flex",
   alignItems: "baseline",
   justifyContent: "space-between",
   gap: 8,
 };
 
-const LABEL_STYLE: React.CSSProperties = { color: "#475569" }; // slate-600。
+const LABEL_STYLE: CSSProperties = { color: "var(--color-text-label)" };
 
-const VALUE_STYLE: React.CSSProperties = {
+const VALUE_STYLE: CSSProperties = {
   fontWeight: 600,
-  color: "#1e293b",
+  color: "var(--color-text-strong)",
   textAlign: "right",
 };
 
-const MISSING_STYLE: React.CSSProperties = {
+const MISSING_STYLE: CSSProperties = {
   fontWeight: 400,
-  color: "#94a3b8", // slate-400（薄く＝値ではない・「ゼロ」と区別）。
+  color: "var(--color-text-faint)", // 薄く＝値ではない・「ゼロ」と区別。
 };
 
-const SOURCE_STYLE: React.CSSProperties = {
+const SOURCE_STYLE: CSSProperties = {
   margin: "4px 0 0",
-  font: "12px/1.4 system-ui, sans-serif", // caption 相当（出典は小さく・DESIGN §3）。
-  color: "#64748b",
+  font: "var(--text-caption)", // 出典は小さく（DESIGN §3）。
+  color: "var(--color-text-muted)",
 };
