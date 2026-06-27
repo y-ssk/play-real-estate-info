@@ -31,6 +31,7 @@
 - ブランチは **feature → dev → main**。`main`・`dev` は保護線（**直接 commit/push 禁止**。`ADR-0003`）。
   作業は feature ブランチで行い、まとまりごとに `dev` へ PR。
 - feature への commit/push・PR 作成は**都度許可なく可**。**`feature→dev` の取り込み（merge）は AI が実行可**（PR→マージ→ブランチ整理まで）。**`dev→main` の取り込みはオーナーが承認/実行**（`ADR-0003` 更新）。
+- **スライス/仕様変更の対話・合意・反映先は GitHub Issue に記録**（1スライス1Issue・**識別＝Issue番号**で小数採番しない・PRは `Closes #`・Epicで段を階層化）。正の索引は `docs/99`「実装スライス」、テンプレは `.github/ISSUE_TEMPLATE/`（運用ルールは `docs/99`「スライスの管理」）。
 
 ---
 
