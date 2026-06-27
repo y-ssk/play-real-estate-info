@@ -35,9 +35,14 @@ if ! printf '%s' "$VINTAGE" | grep -qE '^[0-9]{4}$'; then
   exit 2
 fi
 
+# 秘匿は中身を見ず source するだけ（MLIT_API_KEY を環境変数に載せる・CLAUDE.md / ingest-n03.sh と同流儀）。
+# どのシェルから呼んでも鍵が揃うよう self-source する（対話シェルで source 済みでも二重で無害）。
+# shellcheck disable=SC1090
+[ -f ~/.config/config.env ] && source ~/.config/config.env
+
 # 鍵の存在のみ確認（値は出さない・CLAUDE.md 秘匿ルール）。未設定なら手順へ誘導して止める。
 if [ -z "${MLIT_API_KEY:-}" ]; then
-  echo "MLIT_API_KEY が未設定。~/.config/config.env を source する（README 参照）" >&2
+  echo "MLIT_API_KEY が未設定。~/.config/config.env を確認する（README 参照）" >&2
   exit 1
 fi
 
