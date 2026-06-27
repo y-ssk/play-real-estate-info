@@ -44,10 +44,12 @@ export function MapView({
   const mapStyle = useMemo(() => createBaseStyle(), []);
   // 現在ズーム（表示用）。initialViewState は保ちつつ onMove で読み取るだけ（地図は非制御のまま）。
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
-  // カーソル：**ホバー中は pointer（押せる合図）／つかんでドラッグ中は grabbing**（オーナー指定の挙動）。
-  // react-map-gl は canvas の cursor を `cursor` prop から毎レンダー適用するため、prop で制御する（レイヤー側で
-  // getCanvas().style.cursor を直接書いても上書きされ効かない＝層4 で判明）。ドラッグ中だけ grabbing に切替。
-  const [dragging, setDragging] = useState(false);
+  // カーソル：**ホバー中は pointer（押せる合図）／ボタンを押している間は grabbing（つかむ手）**。離して選択中に
+  // なったら pointer に戻す（オーナー指定）。＝ドラッグ（押して動かす）だけでなく**押下中**で切り替えるため
+  // onMouseDown/Up を使う（onDragStart は「動かし始め」まで発火せずクリック押下中は変わらない）。
+  // react-map-gl は canvas の cursor を `cursor` prop から毎レンダー適用するため prop で制御する
+  // （レイヤー側で getCanvas().style.cursor を直接書いても上書きされ効かない＝層4 で判明）。
+  const [pressing, setPressing] = useState(false);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -64,11 +66,14 @@ export function MapView({
         interactiveLayerIds={interactiveLayerIds}
         onClick={onMapClick}
         onMouseMove={onMapMouseMove}
-        onMouseLeave={onMapMouseLeave}
-        // ホバー=pointer／ドラッグ中=grabbing（つかんでいる手）。
-        cursor={dragging ? "grabbing" : "pointer"}
-        onDragStart={() => setDragging(true)}
-        onDragEnd={() => setDragging(false)}
+        onMouseLeave={() => {
+          setPressing(false); // 地図外で離した取り残し防止。
+          onMapMouseLeave?.();
+        }}
+        // ホバー=pointer／ボタン押下中=grabbing（つかむ手）。離したら pointer。
+        cursor={pressing ? "grabbing" : "pointer"}
+        onMouseDown={() => setPressing(true)}
+        onMouseUp={() => setPressing(false)}
       >
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />
