@@ -119,12 +119,45 @@ describe("ChoroplethLayer", () => {
     expect(op[1]).toEqual(["==", ["feature-state", "present"], true]);
 
     // present(13101) にだけ value+present が張られ、データなし(13102)には張られない＝色抜き。
+    // 値の effect とは別に matched の effect も present に matched を張る（絞り込み未使用＝全件 true）ため、
+    // 「value+present を持つ呼び出し」だけを取り出して検証する（matched 呼び出しは別アサート）。
     await waitFor(() => {
-      expect(featureStateCalls).toHaveLength(1);
+      expect(featureStateCalls.some((c) => "present" in c.state)).toBe(true);
     });
-    expect(featureStateCalls[0]).toEqual({ id: "13101", state: { value: 11.64, present: true } });
+    const valueCalls = featureStateCalls.filter((c) => "present" in c.state);
+    expect(valueCalls).toHaveLength(1);
+    expect(valueCalls[0]).toEqual({ id: "13101", state: { value: 11.64, present: true } });
+    // 絞り込み未使用時は present(13101) に matched:true を張る＝全件通常塗り（従来の見え方を壊さない）。
+    const matchedCalls = featureStateCalls.filter((c) => "matched" in c.state);
+    expect(matchedCalls).toEqual([{ id: "13101", state: { matched: true } }]);
     // 張り直し前に一旦消す（指標切替・持ち越し防止）。
     expect(removeStateCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("絞り込み中は該当に matched:true・非該当に matched:false を張り、不透明度式を強調側へ切り替える", async () => {
+    // 両方 present・値ありにして「該当/非該当」の差を matched で表せるようにする。
+    const values: MetricValue[] = [
+      { code: "13101", value: 11.64, status: "present" },
+      { code: "13102", value: 10.2, status: "present" },
+    ];
+    stubFetch(sampleGeometry, values);
+
+    renderWithClient(<ChoroplethLayer filterActive={true} matchedCodes={new Set(["13101"])} />);
+
+    const fill = await screen.findByTestId("layer-fill");
+    // 強調時は matched を見る case 式（present の分岐を含む3状態）へ切り替わる。
+    const op = JSON.parse(fill.getAttribute("data-fill-opacity") ?? "null");
+    expect(op[0]).toBe("case");
+    const flat = JSON.stringify(op);
+    expect(flat).toContain("matched");
+
+    await waitFor(() => {
+      expect(featureStateCalls.some((c) => "matched" in c.state)).toBe(true);
+    });
+    const matchedCalls = featureStateCalls.filter((c) => "matched" in c.state);
+    // 該当(13101)=true、非該当(13102)=false（淡く沈める）。
+    expect(matchedCalls).toContainEqual({ id: "13101", state: { matched: true } });
+    expect(matchedCalls).toContainEqual({ id: "13102", state: { matched: false } });
   });
 
   it("取得前は source を出さない（基図のみ＝描画を壊さない）", () => {

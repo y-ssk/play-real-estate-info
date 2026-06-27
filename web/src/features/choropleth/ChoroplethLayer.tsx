@@ -3,6 +3,7 @@ import { type FillLayer, Layer, type LineLayer, Source, useMap } from "react-map
 import { useSelectionStore } from "../../lib/selection";
 import {
   CHOROPLETH_FILL_OPACITY_EXPR,
+  CHOROPLETH_MATCHED_FILL_OPACITY_EXPR,
   CHOROPLETH_OUTLINE_COLOR,
   CHOROPLETH_OUTLINE_WIDTH,
   CHOROPLETH_SELECTED_OUTLINE_COLOR,
@@ -66,7 +67,12 @@ const selectedLayer: LineLayer = {
  * 符号付き＝diverging（0 中央の発散）。**データなしは色抜き**：value（feature-state）が無い/null の feature は
  * fill-opacity を 0 にし基図をそのまま見せる（ADR-0011）。値がある feature だけ不透明度を載せる。
  */
-function buildFillLayer(min: number, max: number, scale: "sequential" | "diverging"): FillLayer {
+function buildFillLayer(
+  min: number,
+  max: number,
+  scale: "sequential" | "diverging",
+  highlight: boolean,
+): FillLayer {
   return {
     id: FILL_LAYER_ID,
     type: "fill",
@@ -74,8 +80,11 @@ function buildFillLayer(min: number, max: number, scale: "sequential" | "divergi
     paint: {
       "fill-color":
         scale === "diverging" ? divergingFillColor(min, max) : choroplethFillColor(min, max),
-      // データなしは色抜き（state 未設定/null は不透明度0）。式はトークンに集約（§4）。
-      "fill-opacity": CHOROPLETH_FILL_OPACITY_EXPR,
+      // データなしは色抜き（§4）。絞り込みハイライト時は非該当を淡く沈める式へ切り替える（ADR-0012）。
+      // 色（値の大小・ADR-0005）はどちらも同じで、強調は不透明度という別チャネルで行う（DESIGN §1）。
+      "fill-opacity": highlight
+        ? CHOROPLETH_MATCHED_FILL_OPACITY_EXPR
+        : CHOROPLETH_FILL_OPACITY_EXPR,
     },
   };
 }
@@ -90,9 +99,23 @@ function buildFillLayer(min: number, max: number, scale: "sequential" | "divergi
  * 配色方式は指標定義の `scale` で分岐（面積=sequential緑／人口増減=diverging紫↔緑・0中央）。
  * データなし（status none/suppressed、value=null）は塗らない＝色抜き（ADR-0011）。
  *
+ * 絞り込みハイライト（ADR-0012）：`filterActive` が真の間、`matchedCodes` に含まれる該当区だけ通常塗り、
+ * それ以外（present だが非該当）を淡く沈める。色（値の大小）は変えず不透明度という別チャネルで強調する。
+ * 真実は filter store（App が条件と単位行から該当を導出して渡す）・地図の `matched` は描画の鏡（§3）。
+ *
  * @param metric 表示する指標キー（未指定は {@link DEFAULT_METRIC}）。
+ * @param matchedCodes 絞り込み該当の5桁コード集合（filterActive=false のときは無視＝全件通常塗り）。
+ * @param filterActive 絞り込みが効いているか（false＝従来の見え方＝全件通常塗り・データなしのみ色抜き）。
  */
-export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }) {
+export function ChoroplethLayer({
+  metric = DEFAULT_METRIC,
+  matchedCodes,
+  filterActive = false,
+}: {
+  metric?: string;
+  matchedCodes?: ReadonlySet<string>;
+  filterActive?: boolean;
+}) {
   const { current: map } = useMap();
   const { data: geometry } = useChoroplethGeometry();
   const { data: values } = useChoroplethValues(metric);
@@ -134,6 +157,26 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
     }
   }, [map, geometry, values]);
 
+  // 絞り込みハイライト（ADR-0012）：present な feature に `matched` を張る（描画の鏡・§3）。
+  // 絞り込み中（filterActive）は matchedCodes に含まれる該当だけ true、それ以外は false（＝淡く沈む）。
+  // 絞り込み未使用時は present な全 feature に true を張る＝全件が通常塗り（従来の見え方を壊さない）。
+  // **values を依存に持つのは load-bearing**：値 effect が removeFeatureState で全 state を消すため、その後に
+  // 本 effect を再走させて matched を張り直さないと色抜き条件しか残らず塗りが出ない（selected effect と同型）。
+  // 本 effect は values を依存配列に明示しているため抑制コメントは要らない（selected は values を省くため抑制が要る）。
+  useEffect(() => {
+    if (!map || !geometry || !values) {
+      return;
+    }
+    const m = map.getMap();
+    for (const v of values) {
+      if (v.status !== "present" || v.value === null) {
+        continue; // データなしは色抜き（matched に依らず present 式で0）。matched は張らない。
+      }
+      const matched = filterActive ? (matchedCodes?.has(v.code) ?? false) : true;
+      m.setFeatureState({ source: SOURCE_ID, id: v.code }, { matched });
+    }
+  }, [map, geometry, values, matchedCodes, filterActive]);
+
   // 選択強調（任意）：選択中の単位に feature-state `selected` を張り、縁取りで示す。
   // 状態の真実は store・ここは描画の鏡（§3）。選択 id は geometry の feature.id（5桁コード）と一致する。
   // 古い選択は明示的に false へ戻す（prevSelectedRef）。
@@ -165,7 +208,7 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
   // 値域が無い間（値未取得/全データなし）は面塗りを出さず輪郭線のみ＝形は先に見える。
   // scale は指標定義から（未知 metric は安全側で sequential）。
   const scale = def?.scale ?? "sequential";
-  const fillLayer = range ? buildFillLayer(range.min, range.max, scale) : null;
+  const fillLayer = range ? buildFillLayer(range.min, range.max, scale, filterActive) : null;
 
   return (
     // feature.id は geometry API が5桁コードを付与済み（文字列トップレベル id）。MapLibre はこれを

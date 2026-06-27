@@ -99,6 +99,40 @@ export const CHOROPLETH_FILL_OPACITY_EXPR: FillOpacity = [
 ];
 
 /**
+ * 絞り込み非該当の単位の塗り不透明度（強調の「淡い側」）。
+ *
+ * 絞り込みが効いている間、非該当の区は色を残しつつ薄く沈める＝該当（{@link CHOROPLETH_FILL_OPACITY}）との
+ * 対比で「条件に合う面」を浮かび上がらせる（ADR-0012 該当を地図ハイライト）。**色は値の大小**（ADR-0005）の
+ * ままで、強調は不透明度という別チャネルで行う＝色の意味を壊さない（DESIGN §1 データ色とUI色の分離）。
+ */
+export const CHOROPLETH_DIMMED_FILL_OPACITY = 0.12;
+
+/**
+ * 絞り込みハイライトを織り込んだ面塗り不透明度式（ADR-0011 色抜き＋ADR-0012 該当ハイライト）。
+ *
+ * 3状態を不透明度で表す（色は別チャネル＝値の大小・ADR-0005）：
+ *  1. データなし（`present`≠true）… 0（色抜き・基図を見せる・ADR-0011）。
+ *  2. 絞り込み中で**非該当**（`matched`≠true）… {@link CHOROPLETH_DIMMED_FILL_OPACITY}（淡く沈める）。
+ *  3. 該当（`matched`=true）… {@link CHOROPLETH_FILL_OPACITY}（通常の塗り＝浮かび上がる）。
+ *
+ * `matched` は「絞り込みが効いていて、かつ条件に合致」した feature にだけ true を張る。絞り込み未使用時は
+ * `matched` を全 feature に true で張る（＝全件が通常塗り＝従来の見え方を壊さない）。present だが matched 未設定の
+ * feature は非該当扱い（淡い）になるため、**絞り込みの有無に関わらず matched を必ず張り直す**運用にする
+ * （描画側 ChoroplethLayer のコメント参照）。
+ */
+export const CHOROPLETH_MATCHED_FILL_OPACITY_EXPR: FillOpacity = [
+  "case",
+  // データなしは最優先で色抜き（present でない）。
+  ["!=", ["feature-state", "present"], true],
+  0,
+  // present かつ該当＝通常塗り。
+  ["==", ["feature-state", "matched"], true],
+  CHOROPLETH_FILL_OPACITY,
+  // present だが非該当＝淡く沈める。
+  CHOROPLETH_DIMMED_FILL_OPACITY,
+];
+
+/**
  * 凡例の段（色と「この色が表す値域の下限」）。
  *
  * 面塗りの色式（{@link choroplethFillColor}）と同じ stops から作るため、凡例と地図の色が必ず一致する
