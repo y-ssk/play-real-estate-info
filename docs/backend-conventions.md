@@ -144,6 +144,14 @@
 - **指標投入＝`cmd/ingest -metric=<key>`**（取得・鍵不要で完結する派生指標の経路）。**冪等＝指標単位 `DELETE WHERE metric=$1`→`INSERT`**（pref 単位の N03 正規化とは別の冪等境界）。投入後に**層1事後チェック**（件数>0・値域：負/0・桁外れ・present なのに NULL なし）を tx 内で行い、失敗はロールバック。面積（`area_km2`）が最初の実装＝`internal/ingest/metric_area.go`。件数が数百で `CopyFrom` を要さないため `INSERT...SELECT`（pgx 直）。大量投入（実 ETL）では §1.1 例外2＝`CopyFrom` を使う。
 - **値配信の応答形＝`[{code, value, status}]`**（`setFeatureState` 向け）。**`value` は null 可ゆえ Go では `*float64`**（`pgtype.Float8.Valid` を見て nil/値に変換）＝JSON で `null`/数値が出て FE が status と合わせて色抜きを判定できる。組み立ては純関数 `buildMetricValues` に切り出し DB 非依存で層1テスト（`internal/handler/values.go`）。クエリは sqlc 既定 `ListMetricValues`（`(metric, unit_kind)` 引数・unit_kind 引数化はメッシュ移行の継ぎ目 `ADR-0015`）。`metric` 未指定は 400。
 
+### §5.3 カルテ配信（/karte）の作法（根拠：`ADR-0011`/`0018`/`0009`）
+カルテ（街を選ぶと出る詳細パネル）は値配信の**縦横が逆**：値配信が「1指標×全単位」を横に引くのに対し、カルテは選択した1単位の**全指標を縦に**集める（`ADR-0011` 骨組み・指標が増えれば応答 `metrics` が伸びる）。
+- **応答形＝`{code, name, pref_code, metrics:[{metric, value, status, year, source}]}`**（`internal/handler/karte.go`）。指標を1つも持たない単位でも `metrics` は空配列で返す（単位は実在＝カルテは空でも出す）。
+- **2クエリを sqlc 既定で**（どちらも静的＝形が変わらない・§1.1）：`GetAdminUnit`（`:one`・name/pref_code）＋`ListUnitMetrics`（`:many`・当該単位の全指標）。名称は表示用（結合はコード・`ADR-0014`）。SQL は store に閉じハンドラは呼ぶだけ（§1.4）。
+- **null 可は Go ポインタで運ぶ**：`value` は `*float64`（データなし3区別＝`status` と対）、`year` は `*int32`（面積のように年度なし＝null／将来人口は推計の到達年 2050＝値・`ADR-0009`）。`source` は法的要件ゆえ常に文字列（`ADR-0011 (c)`）。組み立ては純関数 `buildKarte` で DB 非依存に層1テスト。
+- **識別子は `{unit_kind, unit_id}`**（`ADR-0018`）。MVP は `unit_kind` を公開クエリに載せず内部既定 `municipality` に固定（値配信と同じ `defaultUnitKind`）＝メッシュ移行の継ぎ目（`ADR-0015`）。
+- **状態コード**：`unit_id` 未指定/5桁数字でない＝**400**（形を先に弾く＝DB 往復しない）、`pgx.ErrNoRows`（単位不在）＝**404**、その他失敗＝**500**（接続情報など秘匿を漏らさない汎用文言・他ハンドラと同作法）。
+
 ### §5.3 タイル取得型の指標投入（XKT013 将来人口・根拠：`ADR-0009`/`0011`/`0014`/`0015`）
 面積（admin_unit からの算出）と違い、**MLIT のタイル配信から取得したファイル群を集計して `metric_value` に書く**型。最初の実装＝将来人口増減率（`pop_change_rate_2020_2050`・`internal/ingest/metric_pop_change.go`）。
 - **取得と集計を分ける継ぎ目**：取得＝`scripts/fetch-xkt013.sh`（self-source・鍵はヘッダ・`data/xkt013/{vintage}/{pref}/z{z}_{x}_{y}.geojson` へ保存・冪等・レート制御）。集計＝Go（`cmd/ingest -metric=pop_change_rate_2020_2050 -data=<dir>`）。fetch は薄く「取得・保存」だけ、SHICODE 集計・重複排除は Go が担う（取得ツールに集計を埋めない）。**鍵は値を端末/`ps`/履歴/ログに出さない**＝curl の `--config`（一時ファイル）でヘッダを渡す（引数に展開しない）。

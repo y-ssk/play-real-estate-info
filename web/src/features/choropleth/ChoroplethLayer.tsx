@@ -1,9 +1,12 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { type FillLayer, Layer, type LineLayer, Source, useMap } from "react-map-gl/maplibre";
+import { useSelectionStore } from "../../lib/selection";
 import {
   CHOROPLETH_FILL_OPACITY_EXPR,
   CHOROPLETH_OUTLINE_COLOR,
   CHOROPLETH_OUTLINE_WIDTH,
+  CHOROPLETH_SELECTED_OUTLINE_COLOR,
+  CHOROPLETH_SELECTED_OUTLINE_WIDTH,
   choroplethFillColor,
   divergingFillColor,
 } from "../../styles/mapTokens";
@@ -15,8 +18,15 @@ import { useChoroplethValues } from "./useChoroplethValues";
 const SOURCE_ID = "choropleth";
 /** 区の輪郭線レイヤーの id。 */
 const OUTLINE_LAYER_ID = "choropleth-outline";
-/** 面塗りレイヤーの id（輪郭線より下＝線を塗りで隠さない）。 */
-const FILL_LAYER_ID = "choropleth-fill";
+/**
+ * 面塗りレイヤーの id（輪郭線より下＝線を塗りで隠さない）。
+ *
+ * 公開する理由：地図クリックで単位を選ぶ際の `interactiveLayerIds`（クリック対象＝面塗り面）に App 層が使う。
+ * 機能どうしを直接依存させず（frontend-conventions §1）、合成点の App が「どの面を押せるか」をこの id で指す。
+ */
+export const CHOROPLETH_FILL_LAYER_ID = "choropleth-fill";
+/** ChoroplethLayer 内部の参照名（公開定数と同値・式の中で短く使う）。 */
+const FILL_LAYER_ID = CHOROPLETH_FILL_LAYER_ID;
 
 /**
  * 輪郭線のスタイル。色・太さは生値直書きせず用途トークン経由（DESIGN §4）。
@@ -29,6 +39,23 @@ const outlineLayer: LineLayer = {
   paint: {
     "line-color": CHOROPLETH_OUTLINE_COLOR,
     "line-width": CHOROPLETH_OUTLINE_WIDTH,
+  },
+};
+
+/** 選択中の単位を縁取る強調レイヤーの id（通常輪郭の上に重ねる）。 */
+const SELECTED_LAYER_ID = "choropleth-selected";
+
+/**
+ * 選択強調レイヤー（feature-state `selected` が真の feature だけ太い縁取り・任意の強調）。
+ * 通常輪郭の上に置き「いま選んでいる区」を示す。選択していない feature は幅0＝描かれない（過剰にしない）。
+ */
+const selectedLayer: LineLayer = {
+  id: SELECTED_LAYER_ID,
+  type: "line",
+  source: SOURCE_ID,
+  paint: {
+    "line-color": CHOROPLETH_SELECTED_OUTLINE_COLOR,
+    "line-width": CHOROPLETH_SELECTED_OUTLINE_WIDTH,
   },
 };
 
@@ -70,6 +97,10 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
   const { data: geometry } = useChoroplethGeometry();
   const { data: values } = useChoroplethValues(metric);
   const def = METRICS[metric];
+  // 選択中の単位（共有 UI 状態・ADR-0018）。地図の縁取り強調は描画の鏡（真実は store・§3）。
+  const selectedUnit = useSelectionStore((s) => s.selectedUnit);
+  // 直前に縁取った id を覚え、選択が変わったら確実に外す（古い縁取りの取り残し防止）。
+  const prevSelectedRef = useRef<string | null>(null);
 
   // 値域 [min,max]：present かつ value!=null（数値）の値だけから取る。
   // 符号付き（増減率）は負を含むため min が負になりうる（発散配色が 0 中央で受ける）。
@@ -103,6 +134,29 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
     }
   }, [map, geometry, values]);
 
+  // 選択強調（任意）：選択中の単位に feature-state `selected` を張り、縁取りで示す。
+  // 状態の真実は store・ここは描画の鏡（§3）。選択 id は geometry の feature.id（5桁コード）と一致する。
+  // 古い選択は明示的に false へ戻す（prevSelectedRef）。
+  // **values を依存に持つのは冗長でなく load-bearing**：値の effect が removeFeatureState で source の全 state を
+  // 消すため（指標切替・再取得時）、その後に本 effect を再走させて `selected` を張り直さないと縁取りが消える。
+  // Biome は effect 間のこの結合（remove が selected も道連れにする）を見抜けず冗長と誤判定するため抑制する。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: values は値 effect の全消去後に選択を再適用するため必要
+  useEffect(() => {
+    if (!map || !geometry) {
+      return;
+    }
+    const m = map.getMap();
+    const prev = prevSelectedRef.current;
+    const next = selectedUnit?.unitId ?? null;
+    if (prev && prev !== next) {
+      m.setFeatureState({ source: SOURCE_ID, id: prev }, { selected: false });
+    }
+    if (next) {
+      m.setFeatureState({ source: SOURCE_ID, id: next }, { selected: true });
+    }
+    prevSelectedRef.current = next;
+  }, [map, geometry, values, selectedUnit]);
+
   // 取得前・失敗時は Source を出さない（基図のみで壊れない・タスクのローディング方針）。
   if (geometry === undefined) {
     return null;
@@ -117,9 +171,10 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
     // feature.id は geometry API が5桁コードを付与済み（文字列トップレベル id）。MapLibre はこれを
     // feature-state の結合に使える（実機で確認済＝色分けが効いていた）。promoteId は付けない。
     <Source id={SOURCE_ID} type="geojson" data={geometry}>
-      {/* 面塗り（下）→ 輪郭線（上）の順で重ね、塗りが線を隠さないようにする。 */}
+      {/* 面塗り（下）→ 輪郭線（中）→ 選択強調（上）の順で重ね、塗り/通常線が選択縁を隠さないようにする。 */}
       {fillLayer && <Layer {...fillLayer} />}
       <Layer {...outlineLayer} />
+      <Layer {...selectedLayer} />
     </Source>
   );
 }

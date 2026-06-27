@@ -39,6 +39,29 @@ export const CHOROPLETH_OUTLINE_WIDTH: OutlineWidth = [
 ];
 
 /**
+ * 選択中の単位の強調輪郭色。melta-ui のスレート系（slate-800 = #1e293b）。
+ *
+ * なぜスレート系か：差し色（コーラル・操作色）は hex 未確定（DESIGN §1 仮確定）かつ、選択の強調は地図上で
+ * 面に重なるため点使いの原則に反する。よって濃いスレートで「いま選んでいる区」を縁取り、データ色（青/暖色）とも
+ * 衝突させない（DESIGN §1 データ色とUI色の分離）。差し色 hex 確定後に昇格を再評価（docs/99）。
+ */
+export const CHOROPLETH_SELECTED_OUTLINE_COLOR = "#1e293b";
+
+/**
+ * 選択中の単位の強調輪郭の太さ式：feature-state `selected` が真の feature だけ太く描く。
+ *
+ * 通常輪郭（{@link CHOROPLETH_OUTLINE_WIDTH}）の上に重ねる別レイヤーで使う。選択していない feature は幅0
+ * ＝描かれない（過剰な強調を避ける・タスク方針）。状態の真実は選択ストア（Zustand）で、ここは描画の鏡
+ * （setFeatureState 経由・frontend-conventions §3）。
+ */
+export const CHOROPLETH_SELECTED_OUTLINE_WIDTH: OutlineWidth = [
+  "case",
+  ["==", ["feature-state", "selected"], true],
+  3,
+  0,
+];
+
+/**
  * 面塗りの段階色ランプ（逐次＝シーケンシャル・DESIGN §1）。
  *
  * 用途＝「量の多寡」を濃淡で見せる中立系（面積・人口・相場など）。**青（浸水想定の慣例色）と
