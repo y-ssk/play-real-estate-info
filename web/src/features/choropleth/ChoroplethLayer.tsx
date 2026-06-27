@@ -52,7 +52,7 @@ const HOVER_FILL_LAYER_ID = "choropleth-hover-fill";
 /**
  * ホバー面オーバーレイ（feature-state `hover` が真の自治体だけ淡い中立を全面に重ねる・一時の合図）。
  * 輪郭線だけでなく「面（ポリゴン全体）が反応する」感を出す（層4 目視の指摘）。データ塗りの上に置くが
- * 不透明度が低く（{@link CHOROPLETH_HOVER_FILL_OPACITY_EXPR}＝0.12）データ色・基図は透けて読める。
+ * 不透明度を抑え（{@link CHOROPLETH_HOVER_FILL_OPACITY_EXPR}＝0.28・層4で0.12は淡すぎたため引き上げ）データ色・基図は残る。
  * 色/不透明度は mapTokens に集約（生値を書かない・§4）。輪郭線と同じ `hover` フラグで面+線が連動する。
  */
 const hoverFillLayer: FillLayer = {
@@ -214,6 +214,11 @@ export function ChoroplethLayer({
   // 層4 で全く反応しなかった（一方 react-map-gl の onClick は効きカルテは開いていた）。＝ホバーもクリックと
   // 同じ react-map-gl のイベント（App の onMouseMove/Leave）に載せ、確実に発火させる。直前 id を覚えて確実に外す。
   const prevHoverRef = useRef<string | null>(null);
+  // **values を依存に持つのは selected と同じく load-bearing**：値の effect が removeFeatureState で source の
+  // 全 state を消すため（指標切替・再取得時）、その後に本 effect を再走させて `hover` を張り直さないと
+  // ホバー面+縁取りが道連れに消えたまま戻らない（selected が values 依存で対処済みなのと対称化）。
+  // Biome は effect 間のこの結合を見抜けず冗長と誤判定するため抑制する。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: values は値 effect の全消去後にホバーを再適用するため必要
   useEffect(() => {
     if (!map || !geometry) {
       return;
@@ -228,7 +233,7 @@ export function ChoroplethLayer({
       m.setFeatureState({ source: SOURCE_ID, id: next }, { hover: true });
     }
     prevHoverRef.current = next;
-  }, [map, geometry, hoveredId]);
+  }, [map, geometry, values, hoveredId]);
 
   // 取得前・失敗時は Source を出さない（基図のみで壊れない・タスクのローディング方針）。
   if (geometry === undefined) {
@@ -246,7 +251,7 @@ export function ChoroplethLayer({
     <Source id={SOURCE_ID} type="geojson" data={geometry}>
       {/* データ塗り（下）→ ホバー面オーバーレイ → 通常輪郭 → ホバー輪郭 → 選択輪郭(コーラル・上) の順。
           ホバー（面+線・一時）の上に選択（確定）が勝つ＝ホバー中かつ選択中は選択縁が見える。
-          ホバー面はデータ塗りの上だが不透明度0.12でデータ色を透かす（読みは保つ）。 */}
+          ホバー面はデータ塗りの上だが不透明度0.28でデータ色を残す（読みは保つ）。 */}
       {fillLayer && <Layer {...fillLayer} />}
       <Layer {...hoverFillLayer} />
       <Layer {...outlineLayer} />
