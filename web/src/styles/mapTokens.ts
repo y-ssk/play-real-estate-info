@@ -62,6 +62,28 @@ export const CHOROPLETH_SELECTED_OUTLINE_WIDTH: OutlineWidth = [
 ];
 
 /**
+ * ホバー強調の輪郭色（中立スレート・slate-700 = #334155）。
+ *
+ * なぜ中立スレートか：ホバーは「ここに乗っている」一時の合図で、確定の選択（コーラル）とは別物。差し色を
+ * 使うと一時/確定の区別が消え、点使い（DESIGN §1）も崩れる。よって黒子のスレート系で「触れている」だけ示し、
+ * データ色（青/暖色）とも衝突させない。通常輪郭（slate-600）より一段濃く、選択（slate-800）より淡い中間。
+ * 色は mapTokens に集約（feature 側で生値を書かない・二重管理しない・DESIGN §4）。重ね順は選択が上
+ * ＝ホバー中かつ選択中はコーラル相当の選択強調が勝つ（一時より確定を優先・ChoroplethLayer のレイヤー順）。
+ */
+export const CHOROPLETH_HOVER_OUTLINE_COLOR = "#334155";
+
+/**
+ * ホバー強調輪郭の太さ式：feature-state `hover` が真の feature だけ縁取る（外れたら幅0＝消える）。
+ * 選択強調（{@link CHOROPLETH_SELECTED_OUTLINE_WIDTH}・幅3）より細め（幅2）にし、一時の合図に留める。
+ */
+export const CHOROPLETH_HOVER_OUTLINE_WIDTH: OutlineWidth = [
+  "case",
+  ["==", ["feature-state", "hover"], true],
+  2,
+  0,
+];
+
+/**
  * 面塗りの段階色ランプ（逐次＝シーケンシャル・DESIGN §1）。
  *
  * 用途＝「量の多寡」を濃淡で見せる中立系（面積・人口・相場など）。**青（浸水想定の慣例色）と

@@ -1,11 +1,16 @@
 import { X } from "lucide-react";
-import type { CSSProperties } from "react";
+import { type CSSProperties, useRef } from "react";
 import { IconButton } from "../../components/IconButton";
 import { Panel } from "../../components/Panel";
+import { Skeleton } from "../../components/Skeleton";
 import type { Karte, KarteMetric } from "../../lib/karte";
 import { useSelectionStore } from "../../lib/selection";
+import { useMountTransition } from "../../lib/useMountTransition";
 import { METRICS } from "../choropleth/metrics";
 import { useKarte } from "./useKarte";
+
+/** パネル開閉アニメの所要（--motion-base=200ms と揃える＝出のアンマウント待ちに使う）。 */
+const PANEL_MOTION_MS = 200;
 
 /**
  * KartePanel は選択した単位の詳細（カルテ）を③開閉式パネルで表示する（DESIGN §2・ADR-0011）。
@@ -26,47 +31,69 @@ import { useKarte } from "./useKarte";
  *
  * 申し送り（モバイル）：本パネルは PC の右側固定パネル。モバイルでは DESIGN §2 のボトムシート
  * （下から引き上げ）へ退避させる＝同じ「開閉＝状態」のメンタルモデルを保つ。レイアウト分岐は PC 実装後に足す。
+ *
+ * 開閉アニメ（スライス3.6）：選択で右からスライドイン＋フェード、クローズで右へスライドアウト＋フェード
+ * （--motion-base/--motion-ease・`prefers-reduced-motion` 時は CSS 側で即時）。条件レンダリングのままだと
+ * 出が即時になるため、{@link useMountTransition} でクローズ後も motion ぶん描画を残してから外す。出の最中は
+ * 選択が既に null になっている（clear 済み）ので、最後に見せた内容を ref で保持して空のフラッシュを防ぐ。
  */
 export function KartePanel() {
   const selected = useSelectionStore((s) => s.selectedUnit);
   const clear = useSelectionStore((s) => s.clear);
   const { data, isLoading, isError } = useKarte(selected);
 
-  // 未選択はパネルを出さない＝地図全面（③開閉式の「閉」・DESIGN §2）。
-  if (!selected) {
+  // 開閉アニメの時間管理。open=selected あり。クローズ後も PANEL_MOTION_MS は描画を残し出のアニメを見せる。
+  const { shouldRender, isVisible } = useMountTransition(selected !== null, PANEL_MOTION_MS);
+
+  // 出のアニメ中は selected/data が既に消えるため、最後に表示した値を保持して空フラッシュを防ぐ
+  // （閉じ際に名称や指標が一瞬消えてからスライドアウトするのを避ける）。
+  const lastShownRef = useRef<{ data: Karte | undefined; unitId: string | null }>({
+    data: undefined,
+    unitId: null,
+  });
+  if (selected) {
+    lastShownRef.current = { data, unitId: selected.unitId };
+  }
+  const shown = lastShownRef.current;
+
+  // アニメ込みの描画も残っていなければ何も出さない＝地図全面（③開閉式の「閉」・DESIGN §2）。
+  if (!shouldRender) {
     return null;
   }
 
   return (
     // 右側の固定パネル（PC・DESIGN §2 開いた状態）。地図の上に重ねる（兄弟オーバーレイ＝App が合成）。
     // surface 面の器は共通部品 Panel。aside で包み complementary ロールと位置取り（固定/スクロール）を担う。
-    <aside style={ASIDE_STYLE} aria-label="エリアカルテ">
+    // isVisible で入り/出のスライド＋フェードを切り替える（遷移は ASIDE_STYLE の transition＝トークン）。
+    <aside style={asideStyle(isVisible)} aria-label="エリアカルテ">
       <Panel style={INNER_STYLE}>
         <header style={HEADER_STYLE}>
           {/* 名称は表示用（結合はコード・ADR-0014）。取得前に生の5桁コード（内部識別子）を見せると
-              区を選び直すたび数字がチラつく＝代わりにスケルトン（細いバー）を出す（ローディングの正しさ）。
+              区を選び直すたび数字がチラつく＝代わりに Skeleton（細いバー）を出す（ローディングの正しさ）。
               data 到着後に name が空/欠損のエッジは生コードに落とさず中立文言にする（生コードは絶対に出さない）。 */}
-          {data ? (
-            <h2 style={TITLE_STYLE}>{data.name || "（名称不明）"}</h2>
+          {shown.data ? (
+            <h2 style={TITLE_STYLE}>{shown.data.name || "（名称不明）"}</h2>
           ) : (
-            <div style={TITLE_SKELETON_STYLE} aria-label="名称を読み込み中" />
+            <Skeleton width="55%" height={18} label="名称を読み込み中" />
           )}
           {/* 閉じる＝Lucide X（DESIGN §6 SVG・aria-label 必須）。読込中でも常に出す（閉じられる）。
               選択を解除し地図全面へ戻す（③開閉式）。 */}
           <IconButton icon={X} label="カルテを閉じる" onClick={clear} />
         </header>
 
-        {isLoading && <p style={NOTE_STYLE}>読み込み中…</p>}
-        {isError && <p style={NOTE_STYLE}>カルテの取得に失敗しました。</p>}
+        {/* 出のアニメ中（selected=null）に「失敗」表示へ切り替わらないよう、isLoading/isError は selected
+            の間だけ見る（クローズ際は最後の内容を保持して静かにスライドアウトさせる）。 */}
+        {selected && isLoading && <p style={NOTE_STYLE}>読み込み中…</p>}
+        {selected && isError && <p style={NOTE_STYLE}>カルテの取得に失敗しました。</p>}
 
-        {data && (
+        {shown.data && (
           <div>
-            {data.metrics.length === 0 ? (
+            {shown.data.metrics.length === 0 ? (
               // 指標がまだ無い単位（島嶼等）。単位は実在するが素性は未整備＝黙って空にしない（ADR-0011）。
               <p style={NOTE_STYLE}>この単位の指標はまだありません。</p>
             ) : (
               <ul style={LIST_STYLE}>
-                {data.metrics.map((m) => (
+                {shown.data.metrics.map((m) => (
                   <MetricRow key={m.metric} metric={m} />
                 ))}
               </ul>
@@ -133,19 +160,29 @@ function MetricValueText({ metric }: { metric: KarteMetric }) {
 
 // --- スタイル（意味/用途トークン参照・ADR-0027/DESIGN §4。生値は書かない）。 ---
 
-// aside＝位置取り（右側固定・スクロール・重なり順）。surface の見た目は Panel が担う（INNER_STYLE で上書き）。
-const ASIDE_STYLE: CSSProperties = {
-  position: "absolute",
-  top: 0,
-  right: 0,
-  bottom: 0,
-  width: 360,
-  maxWidth: "90vw",
-  // 影は控えめ（prohibited.md shadow-lg 禁止・オーバーレイは弱く）。
-  boxShadow: "-2px 0 8px rgba(15,23,42,0.08)",
-  overflowY: "auto",
-  zIndex: 2, // ズーム表示(1)・トグル(1)より上（パネルは前面の収束面）。
-};
+// aside＝位置取り（右側固定・スクロール・重なり順）＋開閉アニメ。surface の見た目は Panel が担う。
+// 開閉は右からのスライド（translateX）＋フェード（opacity）。遷移時間/曲線はトークン（--motion-base/-ease）
+// ＝程度を1箇所で調整できる。prefers-reduced-motion 時は global.css が transition を実質0にし即時化する。
+function asideStyle(isVisible: boolean): CSSProperties {
+  return {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 360,
+    maxWidth: "90vw",
+    // 影は控えめ（prohibited.md shadow-lg 禁止・オーバーレイは弱く）。
+    boxShadow: "-2px 0 8px rgba(15,23,42,0.08)",
+    overflowY: "auto",
+    zIndex: 2, // ズーム表示(1)・トグル(1)より上（パネルは前面の収束面）。
+    // 入り＝定位置・不透明／出（未表示）＝右へ逃がし透明に。
+    transform: isVisible ? "translateX(0)" : "translateX(16px)",
+    opacity: isVisible ? 1 : 0,
+    transition:
+      "transform var(--motion-base) var(--motion-ease), opacity var(--motion-base) var(--motion-ease)",
+    willChange: "transform, opacity",
+  };
+}
 
 // Panel 既定の border/radius を、地図右端に貼り付く全画面高さのパネル用に左境界線だけへ寄せる
 // （全周ボーダー/角丸は地図端では不要・prohibited.md no-decoration）。本文は text-data（詰める・DESIGN §3）。
@@ -171,15 +208,6 @@ const TITLE_STYLE: CSSProperties = {
   margin: 0,
   font: "var(--text-heading)", // 名称は見出し（読ませる・DESIGN §3）。
   color: "var(--color-text-strong)",
-};
-
-// 名称取得前のプレースホルダ（細いバー）。見出し1行ぶんの高さを占め、生コードを出さずに空白も避ける。
-// divider トークン（薄い面）で控えめに（スケルトンは bg-slate-200 相当・prohibited.md スケルトン）。
-const TITLE_SKELETON_STYLE: CSSProperties = {
-  width: "55%",
-  height: 18,
-  borderRadius: "var(--radius-sm)",
-  background: "var(--color-divider)",
 };
 
 const NOTE_STYLE: CSSProperties = { margin: "8px 0", color: "var(--color-text-muted)" };

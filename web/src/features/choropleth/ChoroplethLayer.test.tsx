@@ -8,8 +8,11 @@ import { CHOROPLETH_OUTLINE_COLOR } from "../../styles/mapTokens";
 import { ChoroplethLayer } from "./ChoroplethLayer";
 
 // setFeatureState/removeFeatureState の呼び出しを記録する偽 map（WebGL を持たない jsdom 用）。
+// on/off/getCanvas はホバー購読（スライス3.6）が呼ぶため最小スタブを足す（イベント自体の発火は
+// 地図エンジン依存ゆえ jsdom では検証せず層4目視に委ねる）。
 const featureStateCalls: Array<{ id: string | number; state: Record<string, unknown> }> = [];
 const removeStateCalls: number[] = [];
+const fakeCanvas = { style: { cursor: "" } } as HTMLCanvasElement;
 const fakeMap = {
   setFeatureState: (target: { id: string | number }, state: Record<string, unknown>) => {
     featureStateCalls.push({ id: target.id, state });
@@ -17,6 +20,9 @@ const fakeMap = {
   removeFeatureState: () => {
     removeStateCalls.push(1);
   },
+  on: () => {},
+  off: () => {},
+  getCanvas: () => fakeCanvas,
 };
 
 // react-map-gl/maplibre の Source/Layer/useMap を検査可能な DOM/スタブへ差し替える。
