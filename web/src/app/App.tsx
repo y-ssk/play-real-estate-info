@@ -4,6 +4,8 @@ import { CHOROPLETH_FILL_LAYER_ID, ChoroplethLayer } from "../features/choroplet
 import { ChoroplethLegend } from "../features/choropleth/ChoroplethLegend";
 import { MetricToggle } from "../features/choropleth/MetricToggle";
 import { DEFAULT_METRIC } from "../features/choropleth/metrics";
+import { FilterPanel } from "../features/filters/FilterPanel";
+import { useFilterMatch } from "../features/filters/useFilterMatch";
 import { KartePanel } from "../features/karte/KartePanel";
 import { MapView } from "../features/map/MapView";
 import { useSelectionStore } from "../lib/selection";
@@ -37,6 +39,9 @@ export function App() {
   // ホバー中の単位コード（一時の合図・純ローカル＝useState）。react-map-gl の onMouseMove で取り、
   // ChoroplethLayer が feature-state `hover` に張り替える（選択と同じく「真実は外・地図は描画の鏡」）。
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // 絞り込み（④・ADR-0028）：条件→該当コード集合と、スライダー両端の値域。該当集合は地図ハイライトへ
+  // （値の色とは別チャネル・ChoroplethLayer の matchedCodes）。null＝非作動＝普通の色分け地図。
+  const { matchedCodes, rangesByMetric } = useFilterMatch();
 
   // 地図クリック→選択：interactiveLayerIds で面塗り面だけが event.features に載る。
   // feature.id（geometry API が5桁コードを付与済み）を優先し、無ければ properties.code を見る
@@ -66,10 +71,11 @@ export function App() {
         onMapMouseMove={handleMapMouseMove}
         onMapMouseLeave={handleMapMouseLeave}
       >
-        <ChoroplethLayer metric={metric} hoveredId={hoveredId} />
+        <ChoroplethLayer metric={metric} hoveredId={hoveredId} matchedCodes={matchedCodes} />
       </MapView>
       <MetricToggle metric={metric} onChange={setMetric} />
       <ChoroplethLegend metric={metric} />
+      <FilterPanel rangesByMetric={rangesByMetric} />
       <KartePanel />
     </div>
   );
