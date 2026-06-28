@@ -135,9 +135,14 @@ describe("KartePanel", () => {
     const close = await screen.findByLabelText("カルテを閉じる");
     fireEvent.click(close);
 
+    // 選択は即解除（状態の真実）。
     await waitFor(() => {
       expect(useSelectionStore.getState().selectedUnit).toBeNull();
     });
-    expect(screen.queryByRole("complementary")).toBeNull();
+    // パネルは出のアニメ（--motion-base）ぶん描画を残してからアンマウントする（スライス3.6）＝
+    // 即時には消えない。アニメ完了後に complementary が消えることを待つ（useMountTransition の出）。
+    await waitFor(() => {
+      expect(screen.queryByRole("complementary")).toBeNull();
+    });
   });
 });
