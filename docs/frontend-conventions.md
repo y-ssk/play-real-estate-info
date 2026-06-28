@@ -30,9 +30,10 @@
 - **地図クリック→選択の結線**：合成点の `app/App.tsx` が `MapView` に `interactiveLayerIds=[CHOROPLETH_FILL_LAYER_ID]`（面塗り面＝押せる層）と `onMapClick` を渡す。`MapView` は「何を選ぶか」を知らずクリックイベントを素通しし、App が `feature.id`（geometry API が付与した5桁コード・`promoteId` 不使用）を読んで `select({unitKind:'municipality', unitId})` する。面以外（基図）クリックは `features` 空＝無視。
 - **カルテパネル＝③開閉式（`DESIGN`§2）**：`features/karte/KartePanel.tsx`。`selectedUnit` が null ならパネルを出さない＝地図全面（閉）／単位選択で右側固定パネルを開く。`useKarte(unit)`（TanStack Query・`enabled: unit!==null`・キーに `unitKind` を含む）で取得。**表示名・単位・値整形は `features/choropleth/metrics.ts` の registry を流用**（二重管理しない・§5）＝カルテと面塗りで指標の見せ方が一致。**データなし3区別を表示し分ける**（none＝「データなし」・suppressed＝「秘匿」・present＝整形値〔0含む〕・`ADR-0011`）。**推計は registry の表示名/出典に「推計」を明示**（`ADR-0009`）。データを詰める場所ゆえ body-sm 相当（`DESIGN`§3）。**モバイルのボトムシートは PC 実装後**（コンポーネント doc に申し送り済）。
 - **ピン留め＝Zustand `persist` → localStorage**（`ADR-0012`/`0013`）。
+- **絞り込みハイライト＝値の色と別チャネル（④・`ADR-0005`/`ADR-0028`）**：条件は `filterStore`（Zustand `conditions`）に持ち、突き合わせ（`lib/filtering`の純関数）で得た該当コード集合を `setFeatureState({matched})` で張る（真実は store・地図は描画の鏡・§3）。**`matched` は `value`/`present`/`hover`/`selected` と独立した第3のチャネル**＝非該当（`matched=false`）を白スクリムで沈め該当をコーラル縁で示す（序列：選択 > ホバー > 該当 > 通常）。**条件ゼロは `matched` を張らない**＝普通の色分け地図に戻す（`hasActiveCondition`・`matchedCodes=null`）。式・色は `styles/mapTokens.ts` に集約し無効式は `mapTokens.test` の `createPropertyExpression` で層2検証。
 
 ## §4 melta-ui／スタイル（根拠：`DESIGN.md`・melta-ui `prohibited.md`・`ADR-0013`）
-- 汎用UIは **`components/`（melta-ui 取り込み層）から参照**。機能側で生の見た目を作り込まない。
+- 汎用UIは **`components/`（melta-ui 取り込み層）から参照**。機能側で生の見た目を作り込まない。**範囲スライダーは `components/RangeSlider`**（④で新設・`ADR-0028`）＝2本の `<input type=range>` を重ね min/max を別々に掴む共通部品。差し色コーラルはつまみ＝操作の点のみ（色定義は `global.css` の `.range-slider__input`・3層トークン参照）。
 - **生値を使わない＝意味/用途トークン経由**（色・余白・タイポ）。**トークンと色の定義そのものは `DESIGN.md`**（本書では定義しない・指すだけ）。
 - melta-ui の **`prohibited.md`（禁止事項）を遵守**し、取り込み部分の **MIT 表示を保持**。
 - **絵文字（機種依存文字）を UI に使わない**（環境差で崩れる・DSの外＝`DESIGN.md` §6）。アイコンは `components/`（melta-ui 取り込み層＝Charcoal/Lucide・SVG）から、**必要なときだけ**使う。不足分は DS調整の締め（`docs/99`「アイコン体系」）。

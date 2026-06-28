@@ -1,10 +1,12 @@
 import { createPropertyExpression } from "@maplibre/maplibre-gl-style-spec";
 import {
+  CHOROPLETH_DIM_FILL_OPACITY_EXPR,
   CHOROPLETH_DIVERGING_RAMP,
   CHOROPLETH_FILL_OPACITY_EXPR,
   CHOROPLETH_FILL_RAMP,
   CHOROPLETH_HOVER_FILL_OPACITY_EXPR,
   CHOROPLETH_HOVER_OUTLINE_WIDTH,
+  CHOROPLETH_MATCHED_OUTLINE_WIDTH,
   CHOROPLETH_OUTLINE_WIDTH,
   CHOROPLETH_SELECTED_OUTLINE_WIDTH,
   choroplethFillColor,
@@ -129,6 +131,17 @@ describe("輪郭幅の序列（通常 < ホバー < 選択・各ズームで保�
   });
 });
 
+describe("絞り込み該当輪郭の序列（通常 < 該当 < ホバー・各ズーム）", () => {
+  // 該当(matched)は通常線より太く気付かせるが、ホバー/選択（一時操作・確定）には譲る（ADR-0028 チャネル序列）。
+  it.each([9, 12, 15, 17])("ズーム%iで該当は通常より太く、ホバーより細い", (z) => {
+    const normal = widthAtZoom(CHOROPLETH_OUTLINE_WIDTH, z);
+    const matched = widthAtZoom(CHOROPLETH_MATCHED_OUTLINE_WIDTH, z);
+    const hover = widthAtZoom(CHOROPLETH_HOVER_OUTLINE_WIDTH, z);
+    expect(matched).toBeGreaterThan(normal);
+    expect(matched).toBeLessThan(hover);
+  });
+});
+
 describe("地図 paint 式が MapLibre 式として有効（層4 でしか出ない無効式を層2 で捕まえる）", () => {
   // 真因の再発防止：zoom 入力の interpolate を case 等に入れ子にすると MapLibre が無効と判定し
   // レイヤーごと描画されない（層4＝実機でしか露見しなかった）。createPropertyExpression で層2 で検証する。
@@ -136,8 +149,10 @@ describe("地図 paint 式が MapLibre 式として有効（層4 でしか出な
     ["CHOROPLETH_OUTLINE_WIDTH", CHOROPLETH_OUTLINE_WIDTH],
     ["CHOROPLETH_HOVER_OUTLINE_WIDTH", CHOROPLETH_HOVER_OUTLINE_WIDTH],
     ["CHOROPLETH_SELECTED_OUTLINE_WIDTH", CHOROPLETH_SELECTED_OUTLINE_WIDTH],
+    ["CHOROPLETH_MATCHED_OUTLINE_WIDTH", CHOROPLETH_MATCHED_OUTLINE_WIDTH],
     ["CHOROPLETH_FILL_OPACITY_EXPR", CHOROPLETH_FILL_OPACITY_EXPR],
     ["CHOROPLETH_HOVER_FILL_OPACITY_EXPR", CHOROPLETH_HOVER_FILL_OPACITY_EXPR],
+    ["CHOROPLETH_DIM_FILL_OPACITY_EXPR", CHOROPLETH_DIM_FILL_OPACITY_EXPR],
   ])("%s（number paint）は有効な式", (name, expr) => {
     expect(() => assertValid(name, expr, numberSpec)).not.toThrow();
   });

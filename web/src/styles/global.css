@@ -45,6 +45,50 @@ body {
   border: 0;
 }
 
+/* 範囲スライダー（components/RangeSlider）の見た目。差し色コーラルはつまみ＝操作の点（DESIGN §1）。
+   accent-color に brand（--color-accent-emphasis）を当て、つまみ/トラックの強調色をブラウザ標準描画へ任せる
+   （ベンダー擬似要素を個別に塗らずトークン1点で効かせる＝記録の乖離を避ける）。トラック地は淡い border 色。
+   2本のレンジ入力を重ねて min/max を別々に掴む（下の .range-slider__input 参照）。 */
+.range-slider__input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 2px;
+  margin: 0;
+  background: var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  /* つまみ＝差し色コーラル（操作の点・DESIGN §1）。標準描画に色だけ与える。 */
+  accent-color: var(--color-accent-emphasis);
+  outline-color: var(--color-accent-emphasis);
+  outline-offset: 2px;
+  cursor: pointer;
+  /* 重ねた2本のうち、つまみの無いトラック部分はクリックを下の本へ透かす（min/max 両方掴めるように）。 */
+  pointer-events: none;
+}
+
+/* つまみだけクリック可（トラックは透過）。ベンダーごとに擬似要素を起こす。 */
+.range-slider__input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent-emphasis);
+  border: 2px solid var(--color-surface);
+  cursor: pointer;
+}
+
+.range-slider__input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent-emphasis);
+  border: 2px solid var(--color-surface);
+  cursor: pointer;
+}
+
 /* 動きに敏感なユーザーへの配慮（melta 非交渉・prohibited.md prefers-reduced-motion 必須）。
    transition/animation を実質無効化（標準パターン）＋脈動を止め控えめな不透明度で固定する。 */
 @media (prefers-reduced-motion: reduce) {

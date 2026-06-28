@@ -142,6 +142,71 @@ export const CHOROPLETH_HOVER_FILL_OPACITY_EXPR: FillOpacity = [
 ];
 
 /**
+ * 絞り込みハイライトの「非該当を沈める」スクリム色（白＝基図地に溶かす）。
+ *
+ * 絞り込み（④・ADR-0028）は値の色（choropleth paint）とは**別チャネル**で該当を強調する（ADR-0005）：
+ * 値の色は触らず、**非該当区にだけ**白スクリムを重ねてデータ色・基図を白へ寄せ「沈める」。該当区には
+ * 何も重ねない（データ色がそのまま浮き上がる＝相対的に強調される）。near-black ではなく白を使う理由＝
+ * 非該当は「視界から退かせたい」もので、暗幕で覆うより淡色基図（白地）へ溶かす方が該当区が前に出る。
+ * ホバー（near-black 中立・一時）/選択（コーラル・確定）とは色も feature-state キー（`matched`）も別物ゆえ
+ * 三者は潰し合わない。色は mapTokens に集約（feature 側で生値を書かない・§4）。
+ */
+export const CHOROPLETH_DIM_FILL_COLOR: FillColor = "#ffffff";
+
+/**
+ * 非該当を沈めるスクリムの不透明度式：feature-state `matched` が **false** の区だけ白を重ね、
+ * それ以外（`matched` が true・または未設定＝絞り込み非作動）は 0（重ねない）。
+ *
+ * なぜ `== false` で判定するか（`!= true` でない）：絞り込みが効いていない間は `matched` を**張らない**
+ * （未設定）。未設定を `!= true` で拾うと全区が沈んで地図が真っ白になる。明示的に `matched=false` を
+ * 張った区（＝絞り込み作動中の非該当）だけ沈める＝「条件入力前は普通の色分け地図」を保つ。
+ * 0.7＝データ色・基図がうっすら残る程度に白へ寄せる（完全には消さない＝位置関係の把握は残す）。
+ * 式はトークンに集約（§4）。
+ */
+export const CHOROPLETH_DIM_FILL_OPACITY_EXPR: FillOpacity = [
+  "case",
+  ["==", ["feature-state", "matched"], false],
+  0.7,
+  0,
+];
+
+/** 絞り込み該当区の強調輪郭色＝コーラル brand（選択リングと同じ `--coral-500`）。 */
+const MATCHED_OUTLINE_COLOR_VALUE = "#f2615a";
+
+/**
+ * 絞り込み該当区の強調輪郭色＝コーラル brand（`--coral-500` = #F2615A）。
+ *
+ * 非該当を白で沈めるだけでなく、該当区を**コーラルの縁**で積極的に縁取り「これが条件に合う街」と読ませる
+ * （層4 で沈めるだけでは弱いと出た時の備え＝該当を前に出す二段構え）。選択リング（{@link
+ * CHOROPLETH_SELECTED_OUTLINE_COLOR}）と同じ brand 色だが**別レイヤー・別 feature-state（`matched`）**で、
+ * 該当は複数あり得る（面でなく細い縁＝点使いの範囲・DESIGN §1）。選択（確定・最も太い）はこの上に重ね、
+ * 該当かつ選択中の区は選択リングが勝つ（確定 > 絞り込み該当 > ホバー > 通常 の序列）。
+ */
+export const CHOROPLETH_MATCHED_OUTLINE_COLOR = MATCHED_OUTLINE_COLOR_VALUE;
+
+/**
+ * 絞り込み該当区の強調輪郭の太さ式：feature-state `matched` が真の feature だけ縁取る（ズーム連動）。
+ *
+ * **通常輪郭より太く、ホバー/選択よりは細く**保つ（確定 > ホバー > 該当 > 通常 ではなく、該当はホバーと
+ * 同程度に「気付かせる」が確定・一時操作には譲る）。式の形は他の幅式と同じ理由で **`interpolate(zoom)` を
+ * 最上位**に置き、各 stop の出力側で `matched` を `case` 分岐する（zoom 入力の interpolate を case に
+ * 入れ子にすると MapLibre が無効と判定しレイヤーごと描画されない・mapTokens.test で担保）。
+ */
+export const CHOROPLETH_MATCHED_OUTLINE_WIDTH: OutlineWidth = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  9,
+  ["case", ["==", ["feature-state", "matched"], true], 1.6, 0],
+  12,
+  ["case", ["==", ["feature-state", "matched"], true], 2.4, 0],
+  15,
+  ["case", ["==", ["feature-state", "matched"], true], 4, 0],
+  17,
+  ["case", ["==", ["feature-state", "matched"], true], 6, 0],
+];
+
+/**
  * 面塗りの段階色ランプ（逐次＝シーケンシャル・DESIGN §1）。
  *
  * 用途＝「量の多寡」を濃淡で見せる中立系（面積・人口・相場など）。**青（浸水想定の慣例色）と

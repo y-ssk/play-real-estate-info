@@ -13,6 +13,9 @@ import { ChoroplethLayer } from "./ChoroplethLayer";
 // 地図エンジン依存ゆえ jsdom では検証せず層4目視に委ねる）。
 const featureStateCalls: Array<{ id: string | number; state: Record<string, unknown> }> = [];
 const removeStateCalls: number[] = [];
+// removeFeatureState の引数（target.id・消すキー）を記録する＝matched の後始末（per-feature の
+// removeFeatureState(...,"matched")）を検証するため。source 一掃（id 無し・key 無し）と区別できる。
+const removeStateArgs: Array<{ id?: string | number; key?: string }> = [];
 // setFeatureState/removeFeatureState を1本の時系列に並べて記録する（指標切替で source の全 state を
 // 消した「後」に hover/selected が張り直されるか＝順序依存の退行を検知するため）。
 type StateEvent =
@@ -25,8 +28,9 @@ const fakeMap = {
     featureStateCalls.push({ id: target.id, state });
     stateLog.push({ kind: "set", id: target.id, state });
   },
-  removeFeatureState: () => {
+  removeFeatureState: (target?: { id?: string | number }, key?: string) => {
     removeStateCalls.push(1);
+    removeStateArgs.push({ id: target?.id, key });
     stateLog.push({ kind: "remove" });
   },
   on: () => {},
@@ -117,6 +121,7 @@ describe("ChoroplethLayer", () => {
     globalThis.fetch = originalFetch;
     featureStateCalls.length = 0;
     removeStateCalls.length = 0;
+    removeStateArgs.length = 0;
     stateLog.length = 0;
   });
 
@@ -270,5 +275,129 @@ describe("ChoroplethLayer", () => {
       (c) => c.id === "13101" && c.state.selected === true,
     ).length;
     expect(selectedCountAfter).toBeGreaterThan(selectedCountBefore);
+  });
+
+  // --- ④の本丸：絞り込みハイライト（matched）の feature-state 張り替え（別チャネル・ADR-0028） ---
+  // matched effect は hover/selected と同じ values 依存ハザード（values 差し替え時の removeFeatureState
+  // 全消去→張り直し・ChoroplethLayer.tsx:291-293）を持つ。見た目（色/太さ/スクリム濃度）は層4目視ゆえ
+  // 検証せず、結線（どの code に何の feature-state を張るか）だけを setFeatureState 記録で確かめる。
+
+  it("(a) matchedCodes を渡すと該当に {matched:true}・非該当に {matched:false} を張る", async () => {
+    stubFetch(sampleGeometry, sampleValues);
+
+    // 13101 だけ該当（13102 は非該当＝沈める対象）。
+    renderWithClient(<ChoroplethLayer matchedCodes={new Set(["13101"])} />);
+
+    // matched effect は geometry がそろってから走る＝非同期に張られるのを待つ。
+    await waitFor(() => {
+      expect(featureStateCalls.some((c) => c.id === "13101" && c.state.matched === true)).toBe(
+        true,
+      );
+    });
+    // 非該当には matched:false を張る（白スクリムの == false 判定に必要・未設定では沈まない）。
+    expect(featureStateCalls.some((c) => c.id === "13102" && c.state.matched === false)).toBe(true);
+  });
+
+  it("(b) matchedCodes=null は非作動：一度も張っていなければ matched を消さない（no-op）", async () => {
+    stubFetch(sampleGeometry, sampleValues);
+
+    renderWithClient(<ChoroplethLayer matchedCodes={null} />);
+
+    // 値の張り（present）が済むまで待ってから matched 系の呼び出しが無いことを確かめる。
+    await waitFor(() => {
+      expect(featureStateCalls.some((c) => c.id === "13101" && c.state.present === true)).toBe(
+        true,
+      );
+    });
+    // matched は1つも張られない（条件ゼロ＝普通の色分け地図）。
+    expect(featureStateCalls.some((c) => "matched" in c.state)).toBe(false);
+    // per-feature の matched 後始末（removeFeatureState(...,"matched")）も走らない（prevMatchedActiveRef）。
+    expect(removeStateArgs.some((a) => a.key === "matched")).toBe(false);
+  });
+
+  it("(b') matched を張った後に matchedCodes=null へ戻すと該当を removeFeatureState(...,'matched') で消す", async () => {
+    stubFetch(sampleGeometry, sampleValues);
+
+    const { rerender } = renderWithClient(<ChoroplethLayer matchedCodes={new Set(["13101"])} />);
+    // まず matched が張られるのを待つ。
+    await waitFor(() => {
+      expect(featureStateCalls.some((c) => c.state.matched === true)).toBe(true);
+    });
+
+    // 条件解除（null）へ戻す＝直前に張った matched を per-feature で消す（普通の色分けへ）。
+    rerender(
+      <QueryClientProvider
+        client={createQueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ChoroplethLayer matchedCodes={null} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      // geometry の全 feature（13101/13102）について matched キーの remove が呼ばれる。
+      expect(removeStateArgs.some((a) => a.id === "13101" && a.key === "matched")).toBe(true);
+    });
+    expect(removeStateArgs.some((a) => a.id === "13102" && a.key === "matched")).toBe(true);
+  });
+
+  it("(c) values 差し替え（removeFeatureState で source 一掃）後に matched が張り直される", async () => {
+    // 指標切替で query が再走＝values が差し替わる状況（hover/selected の (c) と同形）。
+    const valuesByMetric: Record<string, MetricValue[]> = {
+      area_km2: [{ code: "13101", value: 11.64, status: "present" }],
+      pop_change_rate_2020_2050: [{ code: "13101", value: -0.08, status: "present" }],
+    };
+    globalThis.fetch = jest.fn().mockImplementation((url: string) => {
+      if (url.startsWith("/api/choropleth/values")) {
+        const metric = new URL(url, "http://x").searchParams.get("metric") ?? "area_km2";
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => valuesByMetric[metric] ?? [],
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => sampleGeometry });
+    }) as unknown as typeof fetch;
+
+    const { rerender } = renderWithClient(
+      <ChoroplethLayer metric="area_km2" matchedCodes={new Set(["13101"])} />,
+    );
+
+    // 初回：matched が張られるまで待つ。
+    await waitFor(() => {
+      expect(featureStateCalls.some((c) => c.id === "13101" && c.state.matched === true)).toBe(
+        true,
+      );
+    });
+    const matchedCountBefore = featureStateCalls.filter(
+      (c) => c.id === "13101" && c.state.matched === true,
+    ).length;
+    const logLenBefore = stateLog.length;
+
+    // 指標切替：values が差し替わり、値 effect が removeFeatureState({source}) で全 state を消す。
+    // その後 matched effect（values 依存）が再走して張り直さないとハイライトが道連れに消える。
+    rerender(
+      <QueryClientProvider
+        client={createQueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <ChoroplethLayer metric="pop_change_rate_2020_2050" matchedCodes={new Set(["13101"])} />
+      </QueryClientProvider>,
+    );
+
+    // 切替後に source 一掃（remove）が起き、その**最後の**一掃の後に matched が再適用されること
+    // ＝退行検知の核（hover/selected と同じ values 依存ハザード）。
+    await waitFor(() => {
+      const after = stateLog.slice(logLenBefore);
+      const lastRemoveIdx = after.map((e) => e.kind).lastIndexOf("remove");
+      expect(lastRemoveIdx).toBeGreaterThanOrEqual(0);
+      const reMatchedAfterRemove = after
+        .slice(lastRemoveIdx + 1)
+        .some((e) => e.kind === "set" && e.id === "13101" && e.state.matched === true);
+      expect(reMatchedAfterRemove).toBe(true);
+    });
+    // matched の張り直しが実際に追加で起きている（values 依存が無いと増えない＝退行検知）。
+    const matchedCountAfter = featureStateCalls.filter(
+      (c) => c.id === "13101" && c.state.matched === true,
+    ).length;
+    expect(matchedCountAfter).toBeGreaterThan(matchedCountBefore);
   });
 });

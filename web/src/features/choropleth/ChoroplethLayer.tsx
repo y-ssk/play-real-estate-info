@@ -2,11 +2,15 @@ import { useEffect, useMemo, useRef } from "react";
 import { type FillLayer, Layer, type LineLayer, Source, useMap } from "react-map-gl/maplibre";
 import { useSelectionStore } from "../../lib/selection";
 import {
+  CHOROPLETH_DIM_FILL_COLOR,
+  CHOROPLETH_DIM_FILL_OPACITY_EXPR,
   CHOROPLETH_FILL_OPACITY_EXPR,
   CHOROPLETH_HOVER_FILL_COLOR,
   CHOROPLETH_HOVER_FILL_OPACITY_EXPR,
   CHOROPLETH_HOVER_OUTLINE_COLOR,
   CHOROPLETH_HOVER_OUTLINE_WIDTH,
+  CHOROPLETH_MATCHED_OUTLINE_COLOR,
+  CHOROPLETH_MATCHED_OUTLINE_WIDTH,
   CHOROPLETH_OUTLINE_COLOR,
   CHOROPLETH_OUTLINE_WIDTH,
   CHOROPLETH_SELECTED_OUTLINE_COLOR,
@@ -43,6 +47,45 @@ const outlineLayer: LineLayer = {
   paint: {
     "line-color": CHOROPLETH_OUTLINE_COLOR,
     "line-width": CHOROPLETH_OUTLINE_WIDTH,
+  },
+};
+
+/** 絞り込み非該当を沈める白スクリム（面）の id（データ塗りの上・ホバー面より下）。 */
+const DIM_FILL_LAYER_ID = "choropleth-dim-fill";
+
+/**
+ * 非該当沈めスクリム（feature-state `matched` が false の区だけ白を重ね、データ色・基図を白へ寄せる）。
+ * 絞り込み（④・ADR-0028）の**別チャネル**：値の色は触らず、非該当だけ沈めて該当を相対的に前へ出す
+ * （ADR-0005 値の色と別チャネル）。`matched` 未設定（絞り込み非作動）は不透明度0＝何も起きない＝普通の色分け地図。
+ * データ塗りの上だがホバー面（near-black 一時）より下に置く＝ホバーの合図はスクリムに埋もれない。
+ * 色/不透明度は mapTokens に集約（生値を書かない・§4）。
+ */
+const dimFillLayer: FillLayer = {
+  id: DIM_FILL_LAYER_ID,
+  type: "fill",
+  source: SOURCE_ID,
+  paint: {
+    "fill-color": CHOROPLETH_DIM_FILL_COLOR,
+    "fill-opacity": CHOROPLETH_DIM_FILL_OPACITY_EXPR,
+  },
+};
+
+/** 絞り込み該当区を縁取る強調レイヤーの id（通常輪郭の上・ホバー/選択より下）。 */
+const MATCHED_LAYER_ID = "choropleth-matched";
+
+/**
+ * 絞り込み該当強調レイヤー（feature-state `matched` が真の feature だけコーラルで縁取る）。
+ * 非該当を沈めるだけでなく該当を積極的に縁取り「条件に合う街」を読ませる二段構え（ADR-0028）。
+ * 通常輪郭の上・ホバー/選択の下に置く＝確定（選択コーラル太）・一時（ホバー near-black）が該当縁の上に勝つ
+ * （序列：選択 > ホバー > 該当 > 通常）。乗っていない feature は幅0＝描かれない。色/太さは mapTokens（§4）。
+ */
+const matchedLayer: LineLayer = {
+  id: MATCHED_LAYER_ID,
+  type: "line",
+  source: SOURCE_ID,
+  paint: {
+    "line-color": CHOROPLETH_MATCHED_OUTLINE_COLOR,
+    "line-width": CHOROPLETH_MATCHED_OUTLINE_WIDTH,
   },
 };
 
@@ -135,13 +178,18 @@ function buildFillLayer(min: number, max: number, scale: "sequential" | "divergi
  * @param metric 表示する指標キー（未指定は {@link DEFAULT_METRIC}）。
  * @param hoveredId ホバー中の単位コード（5桁）。App が react-map-gl の onMouseMove で取り、ここで
  *   feature-state `hover` に張り替える（選択と同じく「真実は外・ここは描画の鏡」）。
+ * @param matchedCodes 絞り込み該当区の5桁コード集合（④・ADR-0028）。**null＝絞り込み非作動**＝
+ *   `matched` を一切張らず普通の色分け地図。Set のときだけ該当に `matched=true`・非該当に `matched=false` を張り、
+ *   非該当を白で沈め該当をコーラルで縁取る（値の色とは別チャネル・ADR-0005）。真実は filter store・ここは描画の鏡（§3）。
  */
 export function ChoroplethLayer({
   metric = DEFAULT_METRIC,
   hoveredId,
+  matchedCodes,
 }: {
   metric?: string;
   hoveredId?: string | null;
+  matchedCodes?: ReadonlySet<string> | null;
 }) {
   const { current: map } = useMap();
   const { data: geometry } = useChoroplethGeometry();
@@ -235,6 +283,43 @@ export function ChoroplethLayer({
     prevHoverRef.current = next;
   }, [map, geometry, values, hoveredId]);
 
+  // 絞り込みハイライト（④・ADR-0028）：filter store の該当集合（App 経由 matchedCodes）を feature-state
+  // `matched` に張る。**null＝非作動**。Set のときは geometry の全 feature に該当=true・非該当=false を張る
+  // （false は「沈める」スクリムの判定に必要・mapTokens の `== false`）。値の色とは別チャネル（ADR-0005）・
+  // 真実は store・ここは描画の鏡（§3）。
+  // **非作動への戻しは「直前に matched を張っていたときだけ」消す**（prevMatchedActiveRef）＝条件入力前の
+  // 普通の色分け地図では本 effect を no-op にし、無駄な per-feature remove を出さない（毎レンダの空振り回避）。
+  // **values 依存は load-bearing**：値 effect の removeFeatureState が `matched` も道連れに消すため、その後に
+  // 再走して張り直さないとハイライトが消える（selected/hover と同じ結合）。Biome は見抜けず誤判定ゆえ抑制。
+  const prevMatchedActiveRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: values は値 effect の全消去後にハイライトを再適用するため必要
+  useEffect(() => {
+    if (!map || !geometry) {
+      return;
+    }
+    const m = map.getMap();
+    if (matchedCodes == null) {
+      // 非作動：直前に張っていた matched だけ消す（一度も張っていなければ no-op＝普通の色分けのまま）。
+      if (prevMatchedActiveRef.current) {
+        for (const f of geometry.features) {
+          const code = typeof f.id === "string" ? f.id : f.properties?.code;
+          if (code) {
+            m.removeFeatureState({ source: SOURCE_ID, id: code }, "matched");
+          }
+        }
+        prevMatchedActiveRef.current = false;
+      }
+      return;
+    }
+    for (const f of geometry.features) {
+      const code = typeof f.id === "string" ? f.id : f.properties?.code;
+      if (code) {
+        m.setFeatureState({ source: SOURCE_ID, id: code }, { matched: matchedCodes.has(code) });
+      }
+    }
+    prevMatchedActiveRef.current = true;
+  }, [map, geometry, values, matchedCodes]);
+
   // 取得前・失敗時は Source を出さない（基図のみで壊れない・タスクのローディング方針）。
   if (geometry === undefined) {
     return null;
@@ -249,12 +334,15 @@ export function ChoroplethLayer({
     // feature.id は geometry API が5桁コードを付与済み（文字列トップレベル id）。MapLibre はこれを
     // feature-state の結合に使える（実機で確認済＝色分けが効いていた）。promoteId は付けない。
     <Source id={SOURCE_ID} type="geojson" data={geometry}>
-      {/* データ塗り（下）→ ホバー面オーバーレイ → 通常輪郭 → ホバー輪郭 → 選択輪郭(コーラル・上) の順。
-          ホバー（面+線・一時）の上に選択（確定）が勝つ＝ホバー中かつ選択中は選択縁が見える。
-          ホバー面はデータ塗りの上だが不透明度0.28でデータ色を残す（読みは保つ）。 */}
+      {/* データ塗り（下）→ 非該当沈めスクリム → ホバー面オーバーレイ → 通常輪郭 → 該当縁(コーラル) →
+          ホバー輪郭 → 選択輪郭(コーラル太・上) の順。序列：選択(確定) > ホバー(一時) > 該当(絞り込み) > 通常。
+          スクリムはホバー面より下＝ホバーの合図が沈めに埋もれない。該当縁はホバー/選択より下＝
+          該当区を触る/選ぶとホバー/選択が勝つ。絞り込み非作動時はスクリム/該当縁とも幅・不透明度0で不可視。 */}
       {fillLayer && <Layer {...fillLayer} />}
+      <Layer {...dimFillLayer} />
       <Layer {...hoverFillLayer} />
       <Layer {...outlineLayer} />
+      <Layer {...matchedLayer} />
       <Layer {...hoverLayer} />
       <Layer {...selectedLayer} />
     </Source>
