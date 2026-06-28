@@ -25,11 +25,12 @@ const TOGGLE_BUTTON_ID = "filter-drawer-toggle";
 /**
  * FilterPanel は指標ごとの範囲スライダーで絞り込み条件を入力する**左端ドロワー**（④・ADR-0028/0029）。
  *
- * **開閉ドロワー（ADR-0029・DESIGN §2）**：左上の丸アイコン1つ（{@link FilterDrawerToggle}）で開閉する。
- * 閉＝丸アイコンだけ見え地図全面、開＝左からスライドして出たパネル（{@link useMountTransition} で出の
- * アニメも見せる＝KartePanel の右スライドと対称の左スライド・`--motion-base`・`prefers-reduced-motion` 尊重）。
- * **PC では移動しない（固定）**＝当初の可動（ヘッダ掴み/本体ドラッグ）は層4で破綻し撤回（ADR-0029 改訂）。
- * **閉じられるのは2つだけ＝左上の丸アイコンと閉じる(X)**。本体・スライダーを触っても閉じない。
+ * **開閉ドロワー（ADR-0029 最終版・DESIGN §2）**：左の操作列のボタン（{@link FilterDrawerToggle}・指標トグルの
+ * 下）で開く。閉＝そのボタンだけ見え地図全面、開＝左からスライドして出る**左オーバーレイ**のパネル
+ * （{@link useMountTransition} で出のアニメも見せる＝KartePanel の右スライドと対称の左スライド・`--motion-base`・
+ * `prefers-reduced-motion` 尊重）。**開いている間はトグルボタンを隠す**＝ボタンとパネルが重ならない。
+ * **PC では移動しない（固定）**＝当初の可動（ヘッダ掴み/本体ドラッグ）も別浮きの丸アイコンも層4で破綻し撤回。
+ * **閉じる手段は X と ESC のみ**（本体・スライダーを触っても閉じない）。閉じたら起点のトグルへフォーカス復帰。
  * カルテは右端固定ゆえ左に置き取り合わない（左=探索のドロワー／右=収束の固定・ADR-0029）。
  *
  * **一覧表は持たない**（dead-end 根絶・ADR-0028）：条件を立てると地図が該当区を強調し（別チャネル・
@@ -98,8 +99,8 @@ export function FilterPanel({ rangesByMetric }: { rangesByMetric: Record<string,
   return (
     // 左端ドロワー（固定位置）。isVisible で左からの入り/出スライドを切替（移動はしない・ADR-0029）。
     <section style={panelStyle(isVisible)} aria-label="絞り込み">
-      {/* ヘッダはタイトル＋閉じる(X)のみ。掴み手・飾りアイコンは撤回（移動なし・ADR-0029 改訂）。
-          タイトルは左上の丸トグル（重ねて配置）と重ならないよう左に余白を取る（HEADER_STYLE）。 */}
+      {/* ヘッダはタイトル＋閉じる(X)のみ。掴み手・飾りアイコンは撤回（移動なし・ADR-0029）。
+          トグルは開いている間隠れる＝重ならないのでヘッダの逃げ余白は不要（HEADER_STYLE）。 */}
       <header style={HEADER_STYLE}>
         <span style={TITLE_STYLE}>条件で絞り込む</span>
         {/* 閉じる＝地図全面へ戻す。Lucide X・aria-label 必須（閉じられる2つのうちの片方）。 */}
@@ -136,26 +137,34 @@ export function FilterPanel({ rangesByMetric }: { rangesByMetric: Record<string,
 }
 
 /**
- * FilterDrawerToggle は開閉を担う**唯一のトグル**＝左上の角の丸いアイコン（ADR-0029）。
+ * FilterDrawerToggle は開閉を起こす**左の操作列のラベル付きボタン1つ**（ADR-0029 最終版）。
  *
- * 閉じている時はこの丸アイコンだけが見え（押すと開く）、開いている時はパネルの左上角に留まり押すと閉じる
- * （＝同じ1つのトグルが開閉両用）。開いている間もパネルに覆われず押せるよう **z-index をパネルより上**に置く
- * （`TOGGLE_WRAP_STYLE`）。形は**丸**（角丸 9999）でモーダル左上の角を示す。aria-pressed/label を開閉で出し分け。
- * 値域が無い（絞り込み UI を出せない）間はトグルも出さない判断は呼び側（App）が rangesByMetric で行う。
+ * 指標トグル（`MetricToggle` top40）の下に置き、倍率表示（top8）・指標トグルと衝突しない位置にする
+ * （左上の角の取り合いを避ける・別レイヤーで浮かせる丸アイコンは廃止＝モーダルと重なる違和感の元）。
+ * **開いている間はこのボタンを隠す**（null を返す）＝ボタンとパネルが重ならない（閉↔開で同じ役割が姿を変える）。
+ * 閉は `SlidersHorizontal`＋「絞り込み」テキスト。閉じる手段はパネル側の X/ESC ゆえ本ボタンは「開く」専用。
+ * フォーカス復帰先として安定 id（{@link TOGGLE_BUTTON_ID}）を持つ。値域が無い間は呼び側（App）が出さない。
  */
 export function FilterDrawerToggle() {
   const isOpen = useFilterDrawerStore((s) => s.isOpen);
   const toggle = useFilterDrawerStore((s) => s.toggle);
+  // 開いている間は隠す＝パネルと重ならない（ADR-0029）。閉じればまた現れる（フォーカス復帰先も再生）。
+  if (isOpen) {
+    return null;
+  }
   return (
     <div style={TOGGLE_WRAP_STYLE}>
-      <IconButton
+      <button
         id={TOGGLE_BUTTON_ID}
-        icon={SlidersHorizontal}
-        label={isOpen ? "絞り込みを閉じる" : "絞り込みを開く"}
-        aria-pressed={isOpen}
+        type="button"
         onClick={toggle}
+        aria-expanded={false}
         style={TOGGLE_BUTTON_STYLE}
-      />
+      >
+        {/* アイコンは Lucide（絵文字不使用・DESIGN §6）。テキスト併記でアイコン単独の曖昧さを避ける。 */}
+        <SlidersHorizontal size={16} aria-hidden="true" />
+        絞り込み
+      </button>
     </div>
   );
 }
@@ -252,7 +261,8 @@ function panelStyle(isVisible: boolean): CSSProperties {
     color: "var(--color-text)",
     // 影は控えめ（prohibited.md shadow-lg 禁止・浮く小窓は弱く）。
     boxShadow: "2px 0 8px rgba(15,23,42,0.08)",
-    zIndex: 2, // ズーム(1) より上。トグル(3) より下＝開いてもトグルを押せる。
+    // 左オーバーレイ＝倍率(1)・指標トグル(1) より上。トグルは開くと隠れるので前後関係は問わない。
+    zIndex: 2,
     transform: `translateX(${isVisible ? "0" : hiddenX})`,
     opacity: isVisible ? 1 : 0,
     transition:
@@ -261,14 +271,12 @@ function panelStyle(isVisible: boolean): CSSProperties {
   };
 }
 
-// ヘッダ＝タイトル＋閉じる(X)。掴み手・移動は撤回（ADR-0029 改訂）。タイトルは左上の丸トグルと重ならないよう
-// 左に余白（paddingLeft）を取る＝トグルはパネルの左上角に重なって留まる（開閉両用）。
+// ヘッダ＝タイトル＋閉じる(X)。掴み手・移動は撤回（ADR-0029）。開くとトグルは隠れる＝重ならないので逃げ余白は不要。
 const HEADER_STYLE: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: 6,
-  paddingLeft: 36, // 左上の丸トグル（28px＋余白）と重ならない逃げ。
   color: "var(--color-text-strong)",
 };
 
@@ -276,22 +284,31 @@ const TITLE_STYLE: CSSProperties = {
   font: "var(--text-heading)",
 };
 
-// 唯一のトグル＝左上の丸アイコン。パネルの定位置の左上角に重なって留まる（同位置）。
-// z-index はパネル(2)より上(3)＝開いている間もパネルに覆われず押せる（閉じられる）。
+// トグル＝左の操作列のボタン。指標トグル（top40・高さ約32）の下に置き衝突を避ける（倍率 top8・指標 top40）。
+// 開くと隠れる（FilterDrawerToggle が null）＝パネルと重ならない。MetricToggle と同じ左端 left8 で操作列を縦に揃える。
 const TOGGLE_WRAP_STYLE: CSSProperties = {
   position: "absolute",
-  left: PANEL_MARGIN,
-  top: PANEL_MARGIN,
-  zIndex: 3,
+  left: 8,
+  top: 84,
+  zIndex: 1,
 };
 
+// 指標トグル（MetricToggle）と同じ操作列の見た目に揃える＝薄い白面・スレート枠・キャプション字。
+// アイコン＋テキストを横並び（差し色は使わない＝操作の「点」はつまみ/リセットに取っておく・§1）。
 const TOGGLE_BUTTON_STYLE: CSSProperties = {
-  background: "var(--color-surface)",
-  border: "1px solid var(--color-border)",
-  borderRadius: 9999, // 丸（角の丸いアイコン・ADR-0029）。
-  width: 32,
-  height: 32,
-  boxShadow: "0 1px 4px rgba(15,23,42,0.08)",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "6px 10px",
+  border: "1px solid var(--color-border-strong)",
+  borderRadius: "var(--radius-md)",
+  background: "rgba(255,255,255,0.9)",
+  color: "var(--color-text)",
+  font: "var(--text-caption)",
+  cursor: "pointer",
+  // フォーカスリング＝brand コーラル（prohibited.md「outline:none without ring」回避・MetricToggle と同方針）。
+  outlineColor: "var(--color-accent-emphasis)",
+  outlineOffset: 1,
 };
 
 const ROW_STYLE: CSSProperties = {
