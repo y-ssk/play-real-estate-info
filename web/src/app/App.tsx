@@ -4,7 +4,7 @@ import { CHOROPLETH_FILL_LAYER_ID, ChoroplethLayer } from "../features/choroplet
 import { ChoroplethLegend } from "../features/choropleth/ChoroplethLegend";
 import { MetricToggle } from "../features/choropleth/MetricToggle";
 import { DEFAULT_METRIC } from "../features/choropleth/metrics";
-import { FilterPanel } from "../features/filters/FilterPanel";
+import { FilterDrawerToggle, FilterPanel } from "../features/filters/FilterPanel";
 import { useFilterMatch } from "../features/filters/useFilterMatch";
 import { KartePanel } from "../features/karte/KartePanel";
 import { MapView } from "../features/map/MapView";
@@ -75,6 +75,10 @@ export function App() {
       </MapView>
       <MetricToggle metric={metric} onChange={setMetric} />
       <ChoroplethLegend metric={metric} />
+      {/* 絞り込みは左端の可動ドロワー（ADR-0029）：閉時はトグルだけ（地図全面）、開くと左からスライドして
+          パネルが出る。値域が無い間はどちらも出ない（FilterDrawerToggle 自身は常駐だが、地図に値が無い
+          初期でも開けると空パネルになるため、値域が揃ってから出す＝トグルもパネルと同じ条件で見せる）。 */}
+      {Object.keys(rangesByMetric).length > 0 && <FilterDrawerToggle />}
       <FilterPanel rangesByMetric={rangesByMetric} />
       <KartePanel />
     </div>
