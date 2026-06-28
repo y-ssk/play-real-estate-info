@@ -3,6 +3,10 @@ import { type FillLayer, Layer, type LineLayer, Source, useMap } from "react-map
 import { useSelectionStore } from "../../lib/selection";
 import {
   CHOROPLETH_FILL_OPACITY_EXPR,
+  CHOROPLETH_HOVER_FILL_COLOR,
+  CHOROPLETH_HOVER_FILL_OPACITY_EXPR,
+  CHOROPLETH_HOVER_OUTLINE_COLOR,
+  CHOROPLETH_HOVER_OUTLINE_WIDTH,
   CHOROPLETH_OUTLINE_COLOR,
   CHOROPLETH_OUTLINE_WIDTH,
   CHOROPLETH_SELECTED_OUTLINE_COLOR,
@@ -39,6 +43,44 @@ const outlineLayer: LineLayer = {
   paint: {
     "line-color": CHOROPLETH_OUTLINE_COLOR,
     "line-width": CHOROPLETH_OUTLINE_WIDTH,
+  },
+};
+
+/** ホバー中の自治体の全面オーバーレイ（面）の id（データ塗りの上・通常輪郭より下）。 */
+const HOVER_FILL_LAYER_ID = "choropleth-hover-fill";
+
+/**
+ * ホバー面オーバーレイ（feature-state `hover` が真の自治体だけ淡い中立を全面に重ねる・一時の合図）。
+ * 輪郭線だけでなく「面（ポリゴン全体）が反応する」感を出す（層4 目視の指摘）。データ塗りの上に置くが
+ * 不透明度を抑え（{@link CHOROPLETH_HOVER_FILL_OPACITY_EXPR}＝0.28・層4で0.12は淡すぎたため引き上げ）データ色・基図は残る。
+ * 色/不透明度は mapTokens に集約（生値を書かない・§4）。輪郭線と同じ `hover` フラグで面+線が連動する。
+ */
+const hoverFillLayer: FillLayer = {
+  id: HOVER_FILL_LAYER_ID,
+  type: "fill",
+  source: SOURCE_ID,
+  paint: {
+    "fill-color": CHOROPLETH_HOVER_FILL_COLOR,
+    "fill-opacity": CHOROPLETH_HOVER_FILL_OPACITY_EXPR,
+  },
+};
+
+/** ホバー中の単位を縁取る一時強調レイヤーの id（通常輪郭の上・選択強調より下）。 */
+const HOVER_LAYER_ID = "choropleth-hover";
+
+/**
+ * ホバー強調レイヤー（feature-state `hover` が真の feature だけ near-black 中立で縁取り・一時の合図）。
+ * 通常輪郭の上・選択強調の下に置く＝ホバー中かつ選択中は選択（コーラル brand）が上に勝つ（一時より確定優先）。
+ * 乗っていない feature は幅0＝描かれない（過剰にしない）。色/太さは mapTokens に集約（生値を書かない・§4）。
+ * 面オーバーレイ（{@link hoverFillLayer}）と同じ `hover` フラグで連動＝面+線が一緒に強調される。
+ */
+const hoverLayer: LineLayer = {
+  id: HOVER_LAYER_ID,
+  type: "line",
+  source: SOURCE_ID,
+  paint: {
+    "line-color": CHOROPLETH_HOVER_OUTLINE_COLOR,
+    "line-width": CHOROPLETH_HOVER_OUTLINE_WIDTH,
   },
 };
 
@@ -91,8 +133,16 @@ function buildFillLayer(min: number, max: number, scale: "sequential" | "divergi
  * データなし（status none/suppressed、value=null）は塗らない＝色抜き（ADR-0011）。
  *
  * @param metric 表示する指標キー（未指定は {@link DEFAULT_METRIC}）。
+ * @param hoveredId ホバー中の単位コード（5桁）。App が react-map-gl の onMouseMove で取り、ここで
+ *   feature-state `hover` に張り替える（選択と同じく「真実は外・ここは描画の鏡」）。
  */
-export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }) {
+export function ChoroplethLayer({
+  metric = DEFAULT_METRIC,
+  hoveredId,
+}: {
+  metric?: string;
+  hoveredId?: string | null;
+}) {
   const { current: map } = useMap();
   const { data: geometry } = useChoroplethGeometry();
   const { data: values } = useChoroplethValues(metric);
@@ -157,6 +207,34 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
     prevSelectedRef.current = next;
   }, [map, geometry, values, selectedUnit]);
 
+  // ホバー強調（スライス3.6）：App から渡る `hoveredId` に feature-state `hover` を張り替え、面の淡い
+  // オーバーレイ＋near-black の縁取りで「いま触れている区」を示す。**選択と同じく「真実は外（App の状態）・
+  // ここは描画の鏡」**に統一する（frontend-conventions §3）。
+  // なぜ App 経由か：旧実装は生の `map.on('mousemove', layer)` で張っていたが react-map-gl 配下では発火せず
+  // 層4 で全く反応しなかった（一方 react-map-gl の onClick は効きカルテは開いていた）。＝ホバーもクリックと
+  // 同じ react-map-gl のイベント（App の onMouseMove/Leave）に載せ、確実に発火させる。直前 id を覚えて確実に外す。
+  const prevHoverRef = useRef<string | null>(null);
+  // **values を依存に持つのは selected と同じく load-bearing**：値の effect が removeFeatureState で source の
+  // 全 state を消すため（指標切替・再取得時）、その後に本 effect を再走させて `hover` を張り直さないと
+  // ホバー面+縁取りが道連れに消えたまま戻らない（selected が values 依存で対処済みなのと対称化）。
+  // Biome は effect 間のこの結合を見抜けず冗長と誤判定するため抑制する。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: values は値 effect の全消去後にホバーを再適用するため必要
+  useEffect(() => {
+    if (!map || !geometry) {
+      return;
+    }
+    const m = map.getMap();
+    const prev = prevHoverRef.current;
+    const next = hoveredId ?? null;
+    if (prev && prev !== next) {
+      m.setFeatureState({ source: SOURCE_ID, id: prev }, { hover: false });
+    }
+    if (next) {
+      m.setFeatureState({ source: SOURCE_ID, id: next }, { hover: true });
+    }
+    prevHoverRef.current = next;
+  }, [map, geometry, values, hoveredId]);
+
   // 取得前・失敗時は Source を出さない（基図のみで壊れない・タスクのローディング方針）。
   if (geometry === undefined) {
     return null;
@@ -171,9 +249,13 @@ export function ChoroplethLayer({ metric = DEFAULT_METRIC }: { metric?: string }
     // feature.id は geometry API が5桁コードを付与済み（文字列トップレベル id）。MapLibre はこれを
     // feature-state の結合に使える（実機で確認済＝色分けが効いていた）。promoteId は付けない。
     <Source id={SOURCE_ID} type="geojson" data={geometry}>
-      {/* 面塗り（下）→ 輪郭線（中）→ 選択強調（上）の順で重ね、塗り/通常線が選択縁を隠さないようにする。 */}
+      {/* データ塗り（下）→ ホバー面オーバーレイ → 通常輪郭 → ホバー輪郭 → 選択輪郭(コーラル・上) の順。
+          ホバー（面+線・一時）の上に選択（確定）が勝つ＝ホバー中かつ選択中は選択縁が見える。
+          ホバー面はデータ塗りの上だが不透明度0.28でデータ色を残す（読みは保つ）。 */}
       {fillLayer && <Layer {...fillLayer} />}
+      <Layer {...hoverFillLayer} />
       <Layer {...outlineLayer} />
+      <Layer {...hoverLayer} />
       <Layer {...selectedLayer} />
     </Source>
   );

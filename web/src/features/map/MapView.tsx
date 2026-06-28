@@ -27,17 +27,29 @@ export function MapView({
   children,
   interactiveLayerIds,
   onMapClick,
+  onMapMouseMove,
+  onMapMouseLeave,
 }: {
   children?: ReactNode;
   /** クリック可能なレイヤーの id（面塗り面）。これに当たった feature だけ event.features に載る。 */
   interactiveLayerIds?: string[];
   /** クリックイベント（合成点の App が feature.id から選択単位を取り出す）。 */
   onMapClick?: (e: MapLayerMouseEvent) => void;
+  /** マウス移動（App が feature からホバー中の単位コードを取る・クリックと同じ event 経路）。 */
+  onMapMouseMove?: (e: MapLayerMouseEvent) => void;
+  /** 地図外へ出た（App がホバーを外す）。 */
+  onMapMouseLeave?: () => void;
 }) {
   // style はレンダリングごとに作り直す必要がない（実質定数）ため memo 化する。
   const mapStyle = useMemo(() => createBaseStyle(), []);
   // 現在ズーム（表示用）。initialViewState は保ちつつ onMove で読み取るだけ（地図は非制御のまま）。
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
+  // カーソル：**ホバー中は pointer（押せる合図）／ボタンを押している間は grabbing（つかむ手）**。離して選択中に
+  // なったら pointer に戻す（オーナー指定）。＝ドラッグ（押して動かす）だけでなく**押下中**で切り替えるため
+  // onMouseDown/Up を使う（onDragStart は「動かし始め」まで発火せずクリック押下中は変わらない）。
+  // react-map-gl は canvas の cursor を `cursor` prop から毎レンダー適用するため prop で制御する
+  // （レイヤー側で getCanvas().style.cursor を直接書いても上書きされ効かない＝層4 で判明）。
+  const [pressing, setPressing] = useState(false);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -53,6 +65,15 @@ export function MapView({
         onMove={(e) => setZoom(e.viewState.zoom)}
         interactiveLayerIds={interactiveLayerIds}
         onClick={onMapClick}
+        onMouseMove={onMapMouseMove}
+        onMouseLeave={() => {
+          setPressing(false); // 地図外で離した取り残し防止。
+          onMapMouseLeave?.();
+        }}
+        // ホバー=pointer／ボタン押下中=grabbing（つかむ手）。離したら pointer。
+        cursor={pressing ? "grabbing" : "pointer"}
+        onMouseDown={() => setPressing(true)}
+        onMouseUp={() => setPressing(false)}
       >
         <NavigationControl position="top-right" showCompass={false} />
         <ScaleControl position="bottom-left" unit="metric" />

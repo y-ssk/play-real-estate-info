@@ -33,6 +33,9 @@ importers:
       '@biomejs/biome':
         specifier: ^1.9.4
         version: 1.9.4
+      '@maplibre/maplibre-gl-style-spec':
+        specifier: 19.3.3
+        version: 19.3.3
       '@rsbuild/core':
         specifier: ^1.1.0
         version: 1.7.5
