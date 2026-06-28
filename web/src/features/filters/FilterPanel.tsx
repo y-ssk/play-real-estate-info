@@ -1,18 +1,9 @@
-import { GripHorizontal, SlidersHorizontal, X } from "lucide-react";
-import {
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  useEffect,
-  useRef,
-} from "react";
+import { SlidersHorizontal, X } from "lucide-react";
+import { type CSSProperties, useEffect, useRef } from "react";
 import { Button } from "../../components/Button";
 import { IconButton } from "../../components/IconButton";
 import { RangeSlider } from "../../components/RangeSlider";
-import {
-  type DrawerOffset,
-  clampDrawerOffset,
-  useFilterDrawerStore,
-} from "../../lib/filterDrawerStore";
+import { useFilterDrawerStore } from "../../lib/filterDrawerStore";
 import { useFilterStore } from "../../lib/filterStore";
 import type { MetricCondition } from "../../lib/filtering";
 import { useMountTransition } from "../../lib/useMountTransition";
@@ -21,7 +12,7 @@ import type { MetricRange } from "./useFilterMatch";
 
 /** ドロワー開閉アニメの所要（--motion-base=200ms と揃える＝出のアンマウント待ち・KartePanel と対称）。 */
 const PANEL_MOTION_MS = 200;
-/** パネル幅と既定の左上余白（左端ドロワーの格納位置＝この位置から開閉スライドし、ここを掴み移動の基準にする）。 */
+/** パネル幅と左上余白（左端ドロワーの定位置＝この位置から開閉スライドする。PC は移動しない＝固定・ADR-0029）。 */
 const PANEL_WIDTH = 280;
 const PANEL_MARGIN = 8;
 /**
@@ -32,25 +23,25 @@ const PANEL_MARGIN = 8;
 const TOGGLE_BUTTON_ID = "filter-drawer-toggle";
 
 /**
- * FilterPanel は指標ごとの範囲スライダーで絞り込み条件を入力する**左端の可動ドロワー**（④・ADR-0028/0029）。
+ * FilterPanel は指標ごとの範囲スライダーで絞り込み条件を入力する**左端ドロワー**（④・ADR-0028/0029）。
  *
- * **可動ドロワー（ADR-0029・DESIGN §2）**：左端に格納し、ハンドル/ボタンで開閉する。開くと左端から
- * スライドして出（{@link useMountTransition} で出のアニメも見せる＝KartePanel の右スライドと対称の左スライド・
- * `--motion-base`・`prefers-reduced-motion` 尊重）、閉じれば地図が全面に戻る（絞り込み中も地図が主役・ADR-0028）。
- * 開いた後は**ヘッダ（つかみ手）をドラッグして任意位置へ移動**できる。**本体（中身＝スライダー等）のドラッグは
- * 止めず地図のパンへ通す**＝移動はヘッダでのみ起こし地図操作を奪わない（pointerdown はヘッダだけで捕捉・下記）。
- * カルテは右端固定ゆえ左に置き取り合わない（左=探索の可動／右=収束の固定・ADR-0029）。
+ * **開閉ドロワー（ADR-0029・DESIGN §2）**：左上の丸アイコン1つ（{@link FilterDrawerToggle}）で開閉する。
+ * 閉＝丸アイコンだけ見え地図全面、開＝左からスライドして出たパネル（{@link useMountTransition} で出の
+ * アニメも見せる＝KartePanel の右スライドと対称の左スライド・`--motion-base`・`prefers-reduced-motion` 尊重）。
+ * **PC では移動しない（固定）**＝当初の可動（ヘッダ掴み/本体ドラッグ）は層4で破綻し撤回（ADR-0029 改訂）。
+ * **閉じられるのは2つだけ＝左上の丸アイコンと閉じる(X)**。本体・スライダーを触っても閉じない。
+ * カルテは右端固定ゆえ左に置き取り合わない（左=探索のドロワー／右=収束の固定・ADR-0029）。
  *
  * **一覧表は持たない**（dead-end 根絶・ADR-0028）：条件を立てると地図が該当区を強調し（別チャネル・
  * ChoroplethLayer）、該当区クリックで既存カルテ（③）が開く＝「広く探す→ピン→比較」の探す段に徹する。
  * 並べ替え（F7）はここに出さない（#6 ピン一覧へ移設・ADR-0028）。条件は AND・重みづけしない（ADR-0012）。
  *
- * 値は `filterStore`（条件＝Zustand）、開閉・位置は `filterDrawerStore`（器の置き方＝Zustand・ADR-0018）に
- * 分けて持つ（状態の真実は store・地図ハイライトは描画の鏡・§3）。各指標は値域 [min,max] を両端に持つ
- * 範囲スライダー（共通部品 {@link RangeSlider}）で下限/上限を指定。値域いっぱいの条件は外す＝空条件を溜めない。
+ * 値は `filterStore`（条件＝Zustand）、開閉は `filterDrawerStore`（器の開閉＝Zustand・ADR-0018）に分けて
+ * 持つ（状態の真実は store・地図ハイライトは描画の鏡・§3）。各指標は値域 [min,max] を両端に持つ範囲スライダー
+ * （共通部品 {@link RangeSlider}）で下限/上限を指定。値域いっぱいの条件は外す＝空条件を溜めない。
  *
- * 見た目：surface の半透明パネル。見出しアイコンは Lucide（絵文字不使用・DESIGN §6）。差し色コーラルは
- * つまみとリセットの主操作だけ（点使い・§1）。生値は書かず意味/用途トークンを参照（ADR-0027/DESIGN §4）。
+ * 見た目：surface のパネル。アイコンは Lucide（絵文字不使用・DESIGN §6）。差し色コーラルはつまみとリセットの
+ * 主操作だけ（点使い・§1）。生値は書かず意味/用途トークンを参照（ADR-0027/DESIGN §4）。
  *
  * @param rangesByMetric 指標キー→値域（スライダー両端）。値の無い指標はスライダーを出さない。
  */
@@ -60,16 +51,10 @@ export function FilterPanel({ rangesByMetric }: { rangesByMetric: Record<string,
   const clearConditions = useFilterStore((s) => s.clearConditions);
 
   const isOpen = useFilterDrawerStore((s) => s.isOpen);
-  const offset = useFilterDrawerStore((s) => s.offset);
   const close = useFilterDrawerStore((s) => s.close);
-  const setOffset = useFilterDrawerStore((s) => s.setOffset);
 
   // 開閉アニメの時間管理（クローズ後も PANEL_MOTION_MS は描画を残し出のスライドを見せる・KartePanel と同型）。
   const { shouldRender, isVisible } = useMountTransition(isOpen, PANEL_MOTION_MS);
-
-  // ヘッダドラッグ：掴んだ瞬間のポインタ座標と、その時点の浮かせ量を控え、移動量を offset に積む。
-  // ref に持つ＝ドラッグ中の値で再描画を起こさない（座標更新は setOffset 経由・store が真実）。
-  const dragRef = useRef<{ startX: number; startY: number; baseOffset: DrawerOffset } | null>(null);
 
   // 非モーダル a11y（ADR-0029 規約例外）：開いている間 ESC で閉じる。フォーカストラップは入れない
   // （背面の地図を操作させる非モーダル設計と矛盾するため）＝tab は内部に閉じ込めない。
@@ -110,73 +95,14 @@ export function FilterPanel({ rangesByMetric }: { rangesByMetric: Record<string,
     return null;
   }
 
-  // ヘッダ掴み：pointerdown をヘッダだけで捕捉し、setPointerCapture でドラッグ中の move/up を取りこぼさない。
-  // **ここでだけ伝播を止める**＝ヘッダ操作は地図へ流さない。中身（スライダー等）には付けない＝本体ドラッグは
-  // そのまま地図のパンへ通る（ADR-0029 構造的にヘッダのみ移動を起こす）。
-  const onHeaderPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
-    // 主ボタン以外（右/中クリック）では掴まない。
-    if (e.button !== 0) {
-      return;
-    }
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      baseOffset: offset ?? { dx: 0, dy: 0 },
-    };
-  };
-
-  const onHeaderPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
-    const drag = dragRef.current;
-    if (!drag) {
-      return;
-    }
-    e.stopPropagation();
-    // 掴んだ点からの移動量＋掴み始めの浮かせ量を希望オフセットとし、画面外へ出さないようクランプ（純関数）。
-    const desiredDx = drag.baseOffset.dx + (e.clientX - drag.startX);
-    const desiredDy = drag.baseOffset.dy + (e.clientY - drag.startY);
-    setOffset(
-      clampDrawerOffset({
-        baseX: PANEL_MARGIN,
-        baseY: PANEL_MARGIN,
-        desiredDx,
-        desiredDy,
-        panelWidth: PANEL_WIDTH,
-        // 実高さはレイアウト依存ゆえビューポート高で近似的に上限を作る（つかみ手＝左上を画面内に保てれば十分）。
-        panelHeight: window.innerHeight * 0.6,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-        margin: PANEL_MARGIN,
-      }),
-    );
-  };
-
-  const onHeaderPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
-    if (!dragRef.current) {
-      return;
-    }
-    e.stopPropagation();
-    e.currentTarget.releasePointerCapture(e.pointerId);
-    dragRef.current = null;
-  };
-
   return (
-    // 左端の可動ドロワー。位置は既定（左端格納）＋浮かせ量(offset)。isVisible で左からの入り/出スライドを切替。
-    <section style={panelStyle(isVisible, offset)} aria-label="絞り込み">
-      {/* ヘッダ＝つかみ手（grab）。pointer をここだけで捕捉し移動を起こす。中身は触らない＝地図へ通す。 */}
-      <header
-        style={HEADER_STYLE}
-        onPointerDown={onHeaderPointerDown}
-        onPointerMove={onHeaderPointerMove}
-        onPointerUp={onHeaderPointerUp}
-        onPointerCancel={onHeaderPointerUp}
-      >
-        <SlidersHorizontal size={16} aria-hidden="true" />
+    // 左端ドロワー（固定位置）。isVisible で左からの入り/出スライドを切替（移動はしない・ADR-0029）。
+    <section style={panelStyle(isVisible)} aria-label="絞り込み">
+      {/* ヘッダはタイトル＋閉じる(X)のみ。掴み手・飾りアイコンは撤回（移動なし・ADR-0029 改訂）。
+          タイトルは左上の丸トグル（重ねて配置）と重ならないよう左に余白を取る（HEADER_STYLE）。 */}
+      <header style={HEADER_STYLE}>
         <span style={TITLE_STYLE}>条件で絞り込む</span>
-        {/* 掴み代の合図（Lucide・DESIGN §6 SVG）。視覚のみ＝aria 不要だが当たり判定はヘッダ全体。 */}
-        <GripHorizontal size={16} aria-hidden="true" style={GRIP_STYLE} />
-        {/* 閉じる＝地図全面へ戻す（左端ドロワーの「閉」）。Lucide X・aria-label 必須。 */}
+        {/* 閉じる＝地図全面へ戻す。Lucide X・aria-label 必須（閉じられる2つのうちの片方）。 */}
         <IconButton icon={X} label="絞り込みを閉じる" onClick={close} />
       </header>
 
@@ -210,10 +136,11 @@ export function FilterPanel({ rangesByMetric }: { rangesByMetric: Record<string,
 }
 
 /**
- * FilterDrawerToggle は左端の開閉ハンドル（閉じている時の入口・ADR-0029）。
+ * FilterDrawerToggle は開閉を担う**唯一のトグル**＝左上の角の丸いアイコン（ADR-0029）。
  *
- * 左上に小さく置き、押すとドロワーが左端からスライドして出る（開状態は FilterPanel が描く）。
- * 開いている間も押せば閉じる（トグル）＝同じ場所で出し入れできる。Lucide アイコン・aria-label 必須。
+ * 閉じている時はこの丸アイコンだけが見え（押すと開く）、開いている時はパネルの左上角に留まり押すと閉じる
+ * （＝同じ1つのトグルが開閉両用）。開いている間もパネルに覆われず押せるよう **z-index をパネルより上**に置く
+ * （`TOGGLE_WRAP_STYLE`）。形は**丸**（角丸 9999）でモーダル左上の角を示す。aria-pressed/label を開閉で出し分け。
  * 値域が無い（絞り込み UI を出せない）間はトグルも出さない判断は呼び側（App）が rangesByMetric で行う。
  */
 export function FilterDrawerToggle() {
@@ -300,16 +227,13 @@ function MetricFilterRow({
 
 // --- スタイル（意味/用途トークン参照・ADR-0027/DESIGN §4）。 ---
 
-// section＝位置取り（左端ドロワー＋浮かせ量）＋開閉スライド。surface 面の見た目もここで持つ（小窓）。
-// 既定は左端格納（left=PANEL_MARGIN, top=PANEL_MARGIN）。offset で浮かせ、isVisible で左からの入り/出を切替。
-// 出（未表示）＝左へ逃がし透明に／入り＝offset の定位置・不透明。遷移はトークン（--motion-base/-ease）。
+// section＝位置取り（左端ドロワー・固定）＋開閉スライド。surface 面の見た目もここで持つ（小窓）。
+// 定位置は左端（left=PANEL_MARGIN, top=PANEL_MARGIN）。PC は移動しない＝offset は持たない（ADR-0029 改訂）。
+// 出（未表示）＝左へ逃がし透明に／入り＝定位置・不透明。遷移はトークン（--motion-base/-ease）。
 // prefers-reduced-motion 時は global.css が transition を実質0にし即時化する。
-function panelStyle(isVisible: boolean, offset: DrawerOffset | null): CSSProperties {
-  const dx = offset?.dx ?? 0;
-  const dy = offset?.dy ?? 0;
-  // 入り＝定位置（浮かせ量ぶん移動）／出＝左へ逃がす（パネル幅ぶん左へ退避＝左端からのスライド）。
-  const visibleX = `${dx}px`;
-  const hiddenX = `calc(${dx}px - ${PANEL_WIDTH + PANEL_MARGIN}px)`;
+function panelStyle(isVisible: boolean): CSSProperties {
+  // 入り＝定位置（0）／出＝左へ逃がす（パネル幅＋余白ぶん左へ退避＝左端からのスライド）。
+  const hiddenX = `calc(-1 * (${PANEL_WIDTH}px + ${PANEL_MARGIN}px))`;
   return {
     position: "absolute",
     left: PANEL_MARGIN,
@@ -328,8 +252,8 @@ function panelStyle(isVisible: boolean, offset: DrawerOffset | null): CSSPropert
     color: "var(--color-text)",
     // 影は控えめ（prohibited.md shadow-lg 禁止・浮く小窓は弱く）。
     boxShadow: "2px 0 8px rgba(15,23,42,0.08)",
-    zIndex: 2, // ズーム/トグル(1) より上（前面の可動小窓）。
-    transform: `translate(${isVisible ? visibleX : hiddenX}, ${dy}px)`,
+    zIndex: 2, // ズーム(1) より上。トグル(3) より下＝開いてもトグルを押せる。
+    transform: `translateX(${isVisible ? "0" : hiddenX})`,
     opacity: isVisible ? 1 : 0,
     transition:
       "transform var(--motion-base) var(--motion-ease), opacity var(--motion-base) var(--motion-ease)",
@@ -337,39 +261,34 @@ function panelStyle(isVisible: boolean, offset: DrawerOffset | null): CSSPropert
   };
 }
 
-// ヘッダ＝つかみ手。grab カーソルで掴めることを示す（touchAction:none で touch のスクロール/ジェスチャを抑え
-// pointer ドラッグを安定させる）。掴むのはここだけ＝中身は地図へ通す（ADR-0029）。
+// ヘッダ＝タイトル＋閉じる(X)。掴み手・移動は撤回（ADR-0029 改訂）。タイトルは左上の丸トグルと重ならないよう
+// 左に余白（paddingLeft）を取る＝トグルはパネルの左上角に重なって留まる（開閉両用）。
 const HEADER_STYLE: CSSProperties = {
   display: "flex",
   alignItems: "center",
+  justifyContent: "space-between",
   gap: 6,
+  paddingLeft: 36, // 左上の丸トグル（28px＋余白）と重ならない逃げ。
   color: "var(--color-text-strong)",
-  cursor: "grab",
-  touchAction: "none",
-  userSelect: "none",
-};
-
-const GRIP_STYLE: CSSProperties = {
-  marginLeft: "auto",
-  color: "var(--color-text-faint)", // 掴み代の合図は薄く（操作色はコーラルの点に取っておく・§1）。
 };
 
 const TITLE_STYLE: CSSProperties = {
   font: "var(--text-heading)",
 };
 
-// 閉じている時の開閉ハンドル＝左上（トグル/ズームと衝突しない位置取りは App の配置で担保）。
+// 唯一のトグル＝左上の丸アイコン。パネルの定位置の左上角に重なって留まる（同位置）。
+// z-index はパネル(2)より上(3)＝開いている間もパネルに覆われず押せる（閉じられる）。
 const TOGGLE_WRAP_STYLE: CSSProperties = {
   position: "absolute",
-  left: 8,
-  top: 8,
-  zIndex: 1,
+  left: PANEL_MARGIN,
+  top: PANEL_MARGIN,
+  zIndex: 3,
 };
 
 const TOGGLE_BUTTON_STYLE: CSSProperties = {
   background: "var(--color-surface)",
   border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius-md)",
+  borderRadius: 9999, // 丸（角の丸いアイコン・ADR-0029）。
   width: 32,
   height: 32,
   boxShadow: "0 1px 4px rgba(15,23,42,0.08)",
