@@ -1,5 +1,10 @@
 import { GripHorizontal, SlidersHorizontal, X } from "lucide-react";
-import { type CSSProperties, type PointerEvent as ReactPointerEvent, useRef } from "react";
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+} from "react";
 import { Button } from "../../components/Button";
 import { IconButton } from "../../components/IconButton";
 import { RangeSlider } from "../../components/RangeSlider";
@@ -19,6 +24,12 @@ const PANEL_MOTION_MS = 200;
 /** パネル幅と既定の左上余白（左端ドロワーの格納位置＝この位置から開閉スライドし、ここを掴み移動の基準にする）。 */
 const PANEL_WIDTH = 280;
 const PANEL_MARGIN = 8;
+/**
+ * 開閉トグルボタンの安定 id（非モーダル a11y のフォーカス復帰先・ADR-0029 規約例外）。
+ * パネル（閉じる側）と FilterDrawerToggle（復帰先）が別コンポーネントなので、DOM の id で起点へ返す
+ * （フォーカストラップは入れない＝非モーダル設計と矛盾するため・代わりに ESC で閉じ起点へフォーカスを戻す）。
+ */
+const TOGGLE_BUTTON_ID = "filter-drawer-toggle";
 
 /**
  * FilterPanel は指標ごとの範囲スライダーで絞り込み条件を入力する**左端の可動ドロワー**（④・ADR-0028/0029）。
@@ -59,6 +70,31 @@ export function FilterPanel({ rangesByMetric }: { rangesByMetric: Record<string,
   // ヘッダドラッグ：掴んだ瞬間のポインタ座標と、その時点の浮かせ量を控え、移動量を offset に積む。
   // ref に持つ＝ドラッグ中の値で再描画を起こさない（座標更新は setOffset 経由・store が真実）。
   const dragRef = useRef<{ startX: number; startY: number; baseOffset: DrawerOffset } | null>(null);
+
+  // 非モーダル a11y（ADR-0029 規約例外）：開いている間 ESC で閉じる。フォーカストラップは入れない
+  // （背面の地図を操作させる非モーダル設計と矛盾するため）＝tab は内部に閉じ込めない。
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        close();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, close]);
+
+  // フォーカス復帰：閉じた瞬間（開→閉の立ち下がり）にフォーカスを起点のトグルへ戻す（開いた場所へ返す）。
+  // パネルと別コンポーネントの復帰先は id で引く（DOM 直引き＝store にフォーカス責務を持たせない）。
+  const wasOpenRef = useRef(isOpen);
+  useEffect(() => {
+    if (wasOpenRef.current && !isOpen) {
+      document.getElementById(TOGGLE_BUTTON_ID)?.focus();
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
 
   // 値域がそろっている指標だけ出す（値未取得・全データなしの指標はスライダーを出せない）。
   const shown = METRIC_ORDER.filter((key) => rangesByMetric[key] !== undefined);
@@ -186,6 +222,7 @@ export function FilterDrawerToggle() {
   return (
     <div style={TOGGLE_WRAP_STYLE}>
       <IconButton
+        id={TOGGLE_BUTTON_ID}
         icon={SlidersHorizontal}
         label={isOpen ? "絞り込みを閉じる" : "絞り込みを開く"}
         aria-pressed={isOpen}
