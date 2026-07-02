@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { ChoroplethGeometry } from "../../lib/choropleth";
 import { createQueryClient } from "../../lib/queryClient";
@@ -414,7 +414,11 @@ describe("ChoroplethLayer", () => {
     fakeMap.getSource = (() => undefined) as typeof fakeMap.getSource;
     try {
       renderWithClient(<ChoroplethLayer hoveredId="13102" matchedCodes={new Set(["13101"])} />);
-      useSelectionStore.setState({ selectedUnit: { unitKind: "municipality", unitId: "13101" } });
+      // マウント後に選択を立てる（選択 effect のガードを踏ませる意図）。マウント中の store 更新は
+      // component を再描画させるため act で包む＝act 外更新の警告を出さない（品質方針＝act 警告0）。
+      act(() => {
+        useSelectionStore.setState({ selectedUnit: { unitKind: "municipality", unitId: "13101" } });
+      });
 
       // source を出す描画（<Source>）までは進む＝レイヤー合成自体は壊さない。
       await screen.findByTestId("source");
