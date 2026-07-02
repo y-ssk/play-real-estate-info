@@ -37,6 +37,19 @@ export const CHOROPLETH_FILL_LAYER_ID = "choropleth-fill";
 const FILL_LAYER_ID = CHOROPLETH_FILL_LAYER_ID;
 
 /**
+ * source が地図スタイルに生成済みかを確かめる（4つの feature-state effect の共通ガード）。
+ *
+ * なぜ要るか：`setFeatureState`/`removeFeatureState` は対象 source がスタイルに無いと MapLibre が
+ * 例外を投げる（`The source 'choropleth' does not exist in the map's style.`）。React の <Source> は
+ * 描画コミット後に生成されるため、geometry 到着直後の effect 実行が source 生成より先行しうる
+ * （値・選択・ホバー・matched の4 effect すべてが同じ前提＝source 未生成では state を触らない）。
+ * `getSource` で存在を確かめてから触る（無ければ呼ばない＝次の依存変化での再実行で張られる）。
+ */
+function hasChoroplethSource(m: { getSource: (id: string) => unknown }): boolean {
+  return m.getSource(SOURCE_ID) != null;
+}
+
+/**
  * 輪郭線のスタイル。色・太さは生値直書きせず用途トークン経由（DESIGN §4）。
  * 面塗りを足した後も輪郭線は残す（区界を読ませる線・タスク死守）。
  */
@@ -222,7 +235,11 @@ export function ChoroplethLayer({
       return;
     }
     const m = map.getMap();
-    // 前回分を消す（指標切替・再取得での持ち越し防止）。source 未読込時は no-op。
+    // source 未生成（<Source> 描画コミット前）では MapLibre が例外を投げるため触らない（次の再実行で張る）。
+    if (!hasChoroplethSource(m)) {
+      return;
+    }
+    // 前回分を消す（指標切替・再取得での持ち越し防止）。
     m.removeFeatureState({ source: SOURCE_ID });
     for (const v of values) {
       if (v.status === "present" && v.value !== null) {
@@ -244,6 +261,10 @@ export function ChoroplethLayer({
       return;
     }
     const m = map.getMap();
+    // source 未生成では feature-state を触らない（例外回避・共通前提）。次の再実行で張り直る。
+    if (!hasChoroplethSource(m)) {
+      return;
+    }
     const prev = prevSelectedRef.current;
     const next = selectedUnit?.unitId ?? null;
     if (prev && prev !== next) {
@@ -272,6 +293,10 @@ export function ChoroplethLayer({
       return;
     }
     const m = map.getMap();
+    // source 未生成では feature-state を触らない（例外回避・共通前提）。次の再実行で張り直る。
+    if (!hasChoroplethSource(m)) {
+      return;
+    }
     const prev = prevHoverRef.current;
     const next = hoveredId ?? null;
     if (prev && prev !== next) {
@@ -298,6 +323,10 @@ export function ChoroplethLayer({
       return;
     }
     const m = map.getMap();
+    // source 未生成では feature-state を触らない（例外回避・共通前提）。次の再実行で張り直る。
+    if (!hasChoroplethSource(m)) {
+      return;
+    }
     if (matchedCodes == null) {
       // 非作動：直前に張っていた matched だけ消す（一度も張っていなければ no-op＝普通の色分けのまま）。
       if (prevMatchedActiveRef.current) {

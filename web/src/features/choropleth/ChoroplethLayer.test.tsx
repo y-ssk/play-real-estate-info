@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { ChoroplethGeometry } from "../../lib/choropleth";
 import { createQueryClient } from "../../lib/queryClient";
@@ -36,6 +36,9 @@ const fakeMap = {
   on: () => {},
   off: () => {},
   getCanvas: () => fakeCanvas,
+  // source 存在ガード（feature-state は source 未生成だと MapLibre が例外を投げる）。既定は「生成済み」を返し
+  // 既存の張り替え検証を保つ。未生成ケースは getSource を差し替えて検証する（下のガード退行テスト）。
+  getSource: () => ({}) as unknown,
 };
 
 // react-map-gl/maplibre の Source/Layer/useMap を検査可能な DOM/スタブへ差し替える。
@@ -399,5 +402,32 @@ describe("ChoroplethLayer", () => {
       (c) => c.id === "13101" && c.state.matched === true,
     ).length;
     expect(matchedCountAfter).toBeGreaterThan(matchedCountBefore);
+  });
+
+  // --- source 未生成ガード（PR #60 で巻き取ったバグ：source 不在で setFeatureState が例外を投げる） ---
+
+  it("source が未生成（getSource→undefined）の間は setFeatureState/removeFeatureState を呼ばない", async () => {
+    stubFetch(sampleGeometry, sampleValues);
+    const originalGetSource = fakeMap.getSource;
+    // source が地図スタイルにまだ無い状態を模す＝4 effect いずれも feature-state を触ってはいけない
+    // （触ると MapLibre が "The source 'choropleth' does not exist" を投げる）。
+    fakeMap.getSource = (() => undefined) as typeof fakeMap.getSource;
+    try {
+      renderWithClient(<ChoroplethLayer hoveredId="13102" matchedCodes={new Set(["13101"])} />);
+      // マウント後に選択を立てる（選択 effect のガードを踏ませる意図）。マウント中の store 更新は
+      // component を再描画させるため act で包む＝act 外更新の警告を出さない（品質方針＝act 警告0）。
+      act(() => {
+        useSelectionStore.setState({ selectedUnit: { unitKind: "municipality", unitId: "13101" } });
+      });
+
+      // source を出す描画（<Source>）までは進む＝レイヤー合成自体は壊さない。
+      await screen.findByTestId("source");
+      // が、feature-state には一切触れない（ガードで早期 return）＝呼び出し記録が空のまま。
+      await new Promise((r) => setTimeout(r, 0));
+      expect(featureStateCalls).toHaveLength(0);
+      expect(removeStateCalls).toHaveLength(0);
+    } finally {
+      fakeMap.getSource = originalGetSource;
+    }
   });
 });
