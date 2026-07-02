@@ -128,6 +128,57 @@ docker run --rm --network=host -e PGPASSWORD="$POSTGRES_PASSWORD" postgis/postgi
 
 ---
 
+## 4.5. エリア波の手順（対応エリアを段階拡張する・ADR-0030）
+
+対応エリアは**段階（波 wave）**で広げる。1つの波＝「対象 pref を段階リストへ足し、既に作った
+指標をその pref で再取得・再投入する」データ操作（コードは書かない）。段階リスト（正本＝`ADR-0030`・
+`docs/01`§4・`docs/99`「対応エリア」）:
+
+| 波 | 対象エリア | pref コード |
+|---|---|---|
+| 波1 | 1都3県 | `13`（東京・投入済）／`11`（埼玉）／`12`（千葉）／`14`（神奈川） |
+| 波2 | 北関東 | `08`（茨城）／`09`（栃木）／`10`（群馬） |
+| 波3 | 残り首都圏 | `19`（山梨）／`22`（静岡）＝ MVP対応エリア（首都圏9都県）完成 |
+| 将来 | 全国 | 対象コードの追加のみ |
+
+### 手順（N03／算出指標＝`area_km2` の波。pref パラメータ化済みゆえデータ操作で済む）
+
+波に含める**各 pref** について取得→投入を流し（順不同・pref 単位で冪等）、最後に算出指標を**全件で1回**再算出する。
+
+```bash
+# 例: 波1（13 は投入済ゆえ 11・12・14 を追加）。PREF ごとに 2 コマンド。
+for PREF in 11 12 14; do
+  make fetch-n03  N03_YEAR=2023 N03_PREF=$PREF   # 取得＋配置（data/n03/2023/$PREF/）
+  make ingest-n03 N03_YEAR=2023 N03_PREF=$PREF   # n03_raw 投入→admin_unit 正規化（pref 単位 DELETE→INSERT）
+done
+
+# 算出指標を全 admin_unit で再算出（エリア非依存＝全件再投入・波の pref だけでなく全件を作り直す）
+go run ./cmd/ingest -metric=area_km2
+```
+
+- **順番**が肝：`fetch`／`ingest`（pref 単位）→ **最後に** `area_km2` 再算出（全件）。算出指標は
+  admin_unit から計算するので、admin_unit が全 pref 揃ってから 1 回流せばよい（pref ごとに流し直す必要は無い）。
+- **タイル取得型指標**（XKT013・地価・災害）は本手順に**含まない**。多エリア化の継ぎ目（fetch/集計の
+  pref＋タイルグリッド パラメータ化）が済んでから波に載せる（`ADR-0030` 継ぎ目(b)・憶測で先に全県グリッドを作らない）。
+
+### 検証（層1・波ごとに確認する）
+
+```bash
+# pref 別 admin_unit 件数（波の全 pref が入り、既存 pref の件数が維持されること）
+#   波1 期待: 13=69 / 11=72 / 12=60 / 14=58
+psql ... -c "SELECT pref_code, count(*) FROM admin_unit GROUP BY pref_code ORDER BY pref_code;"
+
+# area_km2 が対象 pref の全 admin_unit で present（欠損 0）・値域が常識的（負/0 なし・単位 km²）
+psql ... -c "SELECT left(unit_id,2) pref, count(*), min(value), max(value), sum(value)
+             FROM metric_value WHERE metric='area_km2' AND status='present'
+             GROUP BY left(unit_id,2) ORDER BY pref;"
+```
+
+- pref 別の `sum(area_km2)` は各都県の実面積とおおむね一致するのが健全（波1 実績＝13:約2193 / 11:約3798 /
+  12:約5158 / 14:約2416 km²・公表値と一致）。ずれが大きい pref は N03 の取り違え・重複を疑う。
+
+---
+
 ## 5. つまずきの見方
 
 | 症状 | 見るところ |
