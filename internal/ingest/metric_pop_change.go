@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -18,15 +19,33 @@ const popChangeMetricKey = "pop_change_rate_2020_2050"
 
 // popChangeSource は本指標の出典（ADR-0011 (c) 法的要件）。推計値ゆえ「推計(2020→2050)」を明示する
 // （ADR-0009：実績と区別し断定しない）。算出由来（メッシュ合計の比）も残す＝由来をたどれるようにする。
-const popChangeSource = "国土数値情報 将来推計人口250mメッシュ(XKT013) 推計(2020→2050)。市区町村ごとに ΣPTN_2050/ΣPTN_2020−1 で算出"
+const popChangeSource = "国土数値情報 将来推計人口250mメッシュ(XKT013) 推計(2020→2050)。市区町村ごとに ΣPTN_2050/ΣPTN_2020−1 で算出（1都3県）"
 
 // popChangeVintage は本指標の版（year 列・指標の版＝推計の到達年 2050）。
 // 面積（year NULL）と違い、人口増減率は「2020→2050 の推計」という年次の意味を持つため版を記す（ADR-0015）。
 const popChangeVintage = 2050
 
-// tokyoPrefPrefix は東京都の市区町村コード上2桁（ADR-0014 値域：上2桁=都道府県コード）。
-// タイルは隣県（埼玉/神奈川/千葉/山梨）へはみ出すため、SHICODE 上2桁='13' でのみ集計する。
-const tokyoPrefPrefix = "13"
+// popChangePrefixes は本指標の対象エリア（1都3県）の市区町村コード上2桁（ADR-0014 値域：上2桁=都道府県
+// コード・ADR-0030 波1）。タイルは対象外の隣県（山梨19 等）へはみ出すため、SHICODE 上2桁がこの集合に
+// 含まれるメッシュだけを集計する。他エリアは波でこのリストへ足す（掛け算を避ける・SQL/フィルタは触らない）。
+//
+// 従来は東京固定 "13" の単一定数だったが、波p でエリアを 1都3県へ広げるためパラメータ化した（地価
+// land_price の landPricePrefixes と同流儀）。東京(13)の集計結果は不変（"13" は集合に含まれ続ける）。
+var popChangePrefixes = []string{"11", "12", "13", "14"}
+
+// inTargetPref は SHICODE 上2桁が対象エリア（1都3県）に含まれるかを返す（addMesh の県外除外・純ロジック）。
+func inTargetPref(shi string) bool {
+	if len(shi) < 2 {
+		return false
+	}
+	p := shi[:2]
+	for _, want := range popChangePrefixes {
+		if p == want {
+			return true
+		}
+	}
+	return false
+}
 
 // shiSum は1市区町村(SHICODE)のメッシュ合計（増減率の分子・分母）。
 type shiSum struct {
@@ -41,7 +60,7 @@ type shiSum struct {
 // 同時にメモリへ載せずに（巨大 GeoJSON 対策）市区町村合計を作る。
 type popChangeAccumulator struct {
 	seen map[string]struct{} // 既出 MESH_ID（重複排除）
-	sums map[string]*shiSum  // SHICODE → メッシュ合計（上2桁=13 のみ）
+	sums map[string]*shiSum  // SHICODE → メッシュ合計（上2桁が対象 1都3県 のみ）
 	// 集計の可視化（層1）：処理メッシュ数・重複スキップ数・県外スキップ数。
 	meshKept    int
 	dupSkipped  int
@@ -60,7 +79,7 @@ func newPopChangeAccumulator() *popChangeAccumulator {
 // 1メッシュ数百項目のうち、この4キーだけ拾い他は Decode が読み捨てる（全属性をメモリに載せない＝
 // ストリーム抽出）。年次は PTN（秘匿なし生値・全年そろう）を使う（PT00 は無い年があり、PTN との差は
 // 最大数人で無害＝偵察で確認済み）。MESH_ID=重複排除キー（隣接タイルで同一メッシュが二重に来る）、
-// SHICODE=集計キー（上2桁=13 のみ採用）。
+// SHICODE=集計キー（上2桁が対象 1都3県 のみ採用）。
 type meshProps struct {
 	MeshID string  `json:"MESH_ID"`
 	Shi    string  `json:"SHICODE"`
@@ -75,7 +94,7 @@ type meshProps struct {
 // だけ持つ meshProps へ写す（properties の余分なキーは Decode が捨てる）。geometry も読み捨てる。
 //
 // 重複排除：同一 MESH_ID は最初の1回だけ採用（隣接タイルの重複は2回目以降スキップ）。
-// 県外除外：SHICODE 上2桁!=13 はスキップ（タイルの隣県はみ出し分）。
+// 県外除外：SHICODE 上2桁が対象外（1都3県以外）はスキップ（タイルの隣県はみ出し分）。
 func (a *popChangeAccumulator) addTile(r io.Reader) error {
 	dec := json.NewDecoder(r)
 
@@ -189,8 +208,8 @@ func (a *popChangeAccumulator) addMesh(p meshProps) {
 	}
 	a.seen[p.MeshID] = struct{}{}
 
-	// 上2桁=13 のみ。隣県（埼玉11/千葉12/神奈川14/山梨19）のはみ出しメッシュは捨てる。
-	if len(p.Shi) < 2 || p.Shi[:2] != tokyoPrefPrefix {
+	// 上2桁が対象 1都3県（13/11/12/14）のみ。対象外の隣県（山梨19 等）のはみ出しメッシュは捨てる。
+	if !inTargetPref(p.Shi) {
 		a.prefSkipped++
 		return
 	}
@@ -254,17 +273,18 @@ type PopChangeResult struct {
 	MaxRate     float64 // present の最大増減率（層1：桁外れが無いか）
 }
 
-// ComputePopChangeRate は data/xkt013/<vintage>/13 配下の GeoJSON タイル群を集計し metric_value へ書き込む（冪等）。
+// ComputePopChangeRate は data/xkt013/<vintage> 配下の GeoJSON タイル群を集計し metric_value へ書き込む（冪等）。
 //
-// 設計（ADR-0009 主軸＝人口増減率・ADR-0015 縦持ち・ADR-0016 値の道）：
+// 設計（ADR-0009 主軸＝人口増減率・ADR-0015 縦持ち・ADR-0016 値の道・ADR-0030 波1）：
 //   - タイル群をストリーム抽出（MESH_ID/SHICODE/PTN_2020/PTN_2050 のみ）→ MESH_ID 重複排除 →
-//     SHICODE 上2桁=13 → SHICODE ごとに ΣPTN_2020/ΣPTN_2050 → 増減率。
+//     SHICODE 上2桁が対象 1都3県 → SHICODE ごとに ΣPTN_2020/ΣPTN_2050 → 増減率。
 //   - SHICODE が admin_unit に在る行だけ INSERT（FK 担保＝ADR-0014 マスタに在るコードのみ採用）。
-//   - admin_unit にあって集計データが無い東京の市区町村（島嶼等で未取得）は status=none・値なしで埋める
+//   - admin_unit にあって集計データが無い市区町村（東京島嶼等で未取得）は status=none・値なしで埋める
 //     （データなし3区別・ADR-0011：「未調査」と「率0」を混同させない）。
-//   - 冪等：metric 単位 DELETE→INSERT。実行後アサート（中央区 +24.7%・件数妥当・上2桁13 等）で層1を守る。
+//   - 冪等：metric 単位 DELETE→INSERT。実行後アサート（中央区 +24.7%・件数妥当・対象 pref のみ 等）で層1を守る。
 //
-// dataDir は data/xkt013/<vintage>/13 のような「タイル群が並ぶディレクトリ」。鍵・取得は要らず
+// dataDir は data/xkt013/<vintage> のような「pref サブディレクトリ配下にタイルが並ぶ」ルート
+// （data/xkt013/2050/13/z11_x_y.geojson 等）を再帰探索する（land_price と同流儀）。鍵・取得は要らず
 // （ファイルは fetch-xkt013.sh が用意済み）DB 接続のみ＝層1検証を取得の不確実性から切り離す。
 func ComputePopChangeRate(ctx context.Context, dsn, dataDir string) (PopChangeResult, error) {
 	acc, err := aggregateDir(dataDir)
@@ -297,17 +317,28 @@ func ComputePopChangeRate(ctx context.Context, dsn, dataDir string) (PopChangeRe
 	return res, nil
 }
 
-// aggregateDir は dataDir 配下の *.geojson を1枚ずつストリーム集計して蓄積器を返す。
+// aggregateDir は dataDir 配下（pref サブディレクトリ含む）の *.geojson を1枚ずつストリーム集計して返す。
 //
+// 配置規約 data/xkt013/<vintage>/<pref>/z11_x_y.geojson ゆえ再帰的に集める（pref をまたいで全メッシュを
+// 1蓄積器へ）。県外はみ出しメッシュは addMesh の pref フィルタで自然に落ちる（land_price と同流儀）。
 // なぜ1枚ずつ開いて閉じるか：全タイルを同時に開かず、1枚読み終えたら閉じる＝開くファイルハンドルと
 // メモリを最小に保つ（巨大タイル対策）。ファイルが1枚も無ければ「先に fetch-xkt013.sh」と気づける形で落とす。
 func aggregateDir(dataDir string) (*popChangeAccumulator, error) {
-	files, err := filepath.Glob(filepath.Join(dataDir, "*.geojson"))
+	var files []string
+	err := filepath.WalkDir(dataDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(path, ".geojson") {
+			files = append(files, path)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("タイルの列挙に失敗（%s）: %w", dataDir, err)
 	}
 	if len(files) == 0 {
-		return nil, fmt.Errorf("タイルが無い（%s）。先に scripts/fetch-xkt013.sh で取得する", dataDir)
+		return nil, fmt.Errorf("タイルが無い（%s 配下）。先に scripts/fetch-xkt013.sh で取得する", dataDir)
 	}
 	sort.Strings(files) // 決定的な処理順（ログの再現性）。
 
@@ -335,22 +366,22 @@ func addTileFile(acc *popChangeAccumulator, path string) error {
 
 // writePopChange は集計結果を metric_value へ冪等投入し、実行後アサート（層1）を返す。
 //
-// 投入規則：(1) metric 単位 DELETE→INSERT で冪等。(2) admin_unit(pref 13・municipality)の全単位を母集合に、
-// 集計があれば present/none（rates の判定）、集計に現れない単位（島嶼等で未取得）は status=none で埋める。
-// (3) FK ゆえ admin_unit に無い SHICODE は捨てる（ADR-0014：マスタに在るコードのみ）。
+// 投入規則：(1) metric 単位 DELETE→INSERT で冪等。(2) admin_unit(対象 1都3県・municipality)の全単位を
+// 母集合に、集計があれば present/none（rates の判定）、集計に現れない単位（島嶼等で未取得）は status=none
+// で埋める。(3) FK ゆえ admin_unit に無い SHICODE は捨てる（ADR-0014：マスタに在るコードのみ）。
 func writePopChange(ctx context.Context, tx pgx.Tx, rows []popChangeRow, acc *popChangeAccumulator) (PopChangeResult, error) {
 	// 冪等：当該 metric の既存行を消してから入れ直す（何度流しても同結果）。
 	if _, err := tx.Exec(ctx, `DELETE FROM metric_value WHERE metric = $1`, popChangeMetricKey); err != nil {
 		return PopChangeResult{}, fmt.Errorf("既存 metric_value(metric=%s) の削除に失敗: %w", popChangeMetricKey, err)
 	}
 
-	// admin_unit にある東京(pref 13)の市区町村コード集合を取る（FK 母集合・未取得単位の none 埋め用）。
-	adminCodes, err := tokyoAdminCodes(ctx, tx)
+	// admin_unit にある対象 1都3県の市区町村コード集合を取る（FK 母集合・未取得単位の none 埋め用）。
+	adminCodes, err := targetAdminCodes(ctx, tx)
 	if err != nil {
 		return PopChangeResult{}, err
 	}
 	if len(adminCodes) == 0 {
-		return PopChangeResult{}, fmt.Errorf("admin_unit に東京(pref 13)の市区町村が無い。先に make ingest-n03 N03_PREF=13")
+		return PopChangeResult{}, fmt.Errorf("admin_unit に対象 1都3県(%v)の市区町村が無い。先に make ingest-n03 で各県を投入", popChangePrefixes)
 	}
 
 	// 集計行を SHICODE で引けるように索引化（admin_unit に在るものだけ採用）。
@@ -411,13 +442,14 @@ VALUES ($1, 'municipality', $2, $3, $4, $5, $6)`
 	return res, nil
 }
 
-// tokyoAdminCodes は admin_unit にある東京(pref 13・municipality)の5桁コードを昇順で返す。
-func tokyoAdminCodes(ctx context.Context, tx pgx.Tx) ([]string, error) {
+// targetAdminCodes は admin_unit にある対象 1都3県(municipality)の5桁コードを昇順で返す。
+// pref_code が対象集合（popChangePrefixes）に含まれる市区町村を FK 母集合とする（land_price と同思想）。
+func targetAdminCodes(ctx context.Context, tx pgx.Tx) ([]string, error) {
 	rows, err := tx.Query(ctx,
-		`SELECT code FROM admin_unit WHERE pref_code = $1 AND unit_kind = 'municipality' ORDER BY code`,
-		tokyoPrefPrefix)
+		`SELECT code FROM admin_unit WHERE pref_code = ANY($1) AND unit_kind = 'municipality' ORDER BY code`,
+		popChangePrefixes)
 	if err != nil {
-		return nil, fmt.Errorf("admin_unit(pref 13) の取得に失敗: %w", err)
+		return nil, fmt.Errorf("admin_unit(対象 1都3県) の取得に失敗: %w", err)
 	}
 	defer rows.Close()
 	var codes []string
@@ -433,7 +465,7 @@ func tokyoAdminCodes(ctx context.Context, tx pgx.Tx) ([]string, error) {
 
 // assertPopChange は投入の事後チェック（層1＝データの正しさ）。失敗は具体値付きで返しロールバックさせる。
 //
-// 検証項目：(1) 投入>0 (2) present>0（全件 none は集計失敗の兆候） (3) 全 unit_id が上2桁=13
+// 検証項目：(1) 投入>0 (2) present>0（全件 none は集計失敗の兆候） (3) 全 unit_id が対象 1都3県
 // (4) present の率が現実的範囲（-1<率<10＝半世紀で人口が消える/11倍超は算出バグの兆候）
 // (5) present は value 必須・none は value=NULL（CHECK と二重防御） (6) サンプル（中央区 13102）の率が
 // 想定 +24.7% 近傍（集計ロジックの取り違え検出。偵察と全集計が一致する安定値）。
@@ -445,15 +477,15 @@ func assertPopChange(ctx context.Context, tx pgx.Tx, res PopChangeResult) error 
 		return fmt.Errorf("present が0件（全て none）。タイルの SHICODE/PTN 抽出か上2桁=13 フィルタを確認")
 	}
 
-	// 上2桁=13 以外が紛れていないか（FK は実在を見るが pref は見ないため明示チェック）。
+	// 上2桁が対象 1都3県 以外が紛れていないか（FK は実在を見るが pref は見ないため明示チェック）。
 	var badPref int
 	if err := tx.QueryRow(ctx,
-		`SELECT count(*) FROM metric_value WHERE metric = $1 AND left(unit_id, 2) <> $2`,
-		popChangeMetricKey, tokyoPrefPrefix).Scan(&badPref); err != nil {
+		`SELECT count(*) FROM metric_value WHERE metric = $1 AND left(unit_id, 2) <> ALL($2)`,
+		popChangeMetricKey, popChangePrefixes).Scan(&badPref); err != nil {
 		return fmt.Errorf("pref チェックの集計に失敗: %w", err)
 	}
 	if badPref != 0 {
-		return fmt.Errorf("上2桁が13でない行が %d 件ある（県外混入）", badPref)
+		return fmt.Errorf("上2桁が対象 1都3県 でない行が %d 件ある（県外混入）", badPref)
 	}
 
 	// status と value の整合（present=値あり / none=値なし）。CHECK もあるが層1を可視化。
