@@ -88,51 +88,57 @@ func TestAddTile_DedupAcrossTiles(t *testing.T) {
 	}
 }
 
-// TestAddMesh_PrefFilter は、上2桁!=13（隣県はみ出し）を集計から除外することを確かめる。
+// TestAddMesh_PrefFilter は、対象 1都3県（13/11/12/14）を採用し対象外（山梨19 等はみ出し）を除外することを確かめる。
+// 波p でエリアを 1都3県へ広げたため、従来除外していた埼玉(11)/千葉(12)/神奈川(14)は採用側へ移った。
 func TestAddMesh_PrefFilter(t *testing.T) {
 	t.Parallel()
 	acc := newPopChangeAccumulator()
-	acc.addMesh(meshProps{MeshID: "a", Shi: "13101", PTN20: 100, PTN50: 110})
-	acc.addMesh(meshProps{MeshID: "b", Shi: "11202", PTN20: 100, PTN50: 110}) // 埼玉（除外）
-	acc.addMesh(meshProps{MeshID: "c", Shi: "14100", PTN20: 100, PTN50: 110}) // 神奈川（除外）
-	if _, ok := acc.sums["11202"]; ok {
-		t.Fatal("埼玉(11)が集計に混入している")
+	acc.addMesh(meshProps{MeshID: "a", Shi: "13101", PTN20: 100, PTN50: 110}) // 東京（採用）
+	acc.addMesh(meshProps{MeshID: "b", Shi: "11202", PTN20: 100, PTN50: 110}) // 埼玉（採用）
+	acc.addMesh(meshProps{MeshID: "c", Shi: "12100", PTN20: 100, PTN50: 110}) // 千葉（採用）
+	acc.addMesh(meshProps{MeshID: "d", Shi: "14100", PTN20: 100, PTN50: 110}) // 神奈川（採用）
+	acc.addMesh(meshProps{MeshID: "e", Shi: "19201", PTN20: 100, PTN50: 110}) // 山梨（対象外・除外）
+	for _, code := range []string{"13101", "11202", "12100", "14100"} {
+		if _, ok := acc.sums[code]; !ok {
+			t.Fatalf("対象県 %s が集計に無い", code)
+		}
 	}
-	if _, ok := acc.sums["14100"]; ok {
-		t.Fatal("神奈川(14)が集計に混入している")
+	if _, ok := acc.sums["19201"]; ok {
+		t.Fatal("山梨(19・対象外)が集計に混入している")
 	}
-	if acc.prefSkipped != 2 {
-		t.Fatalf("prefSkipped=%d want 2", acc.prefSkipped)
+	if acc.prefSkipped != 1 {
+		t.Fatalf("prefSkipped=%d want 1（山梨のみ除外）", acc.prefSkipped)
 	}
-	if len(acc.sums) != 1 {
-		t.Fatalf("13 のみ残るべき: %d 件", len(acc.sums))
+	if len(acc.sums) != 4 {
+		t.Fatalf("1都3県の4件が残るべき: %d 件", len(acc.sums))
 	}
 }
 
-// TestRates_ComputesRate は増減率 = Σ2050/Σ2020 − 1 の式と、上2桁≠13の除外を合成データで確かめる。
+// TestRates_ComputesRate は増減率 = Σ2050/Σ2020 − 1 の式と、対象外 pref（山梨19）の除外を合成データで確かめる。
+// 千葉(12)は波p で対象入りしたため、除外の検証には対象外の山梨(19)を使う。
 func TestRates_ComputesRate(t *testing.T) {
 	t.Parallel()
 	acc := newPopChangeAccumulator()
-	acc.addMesh(meshProps{MeshID: "a", Shi: "13101", PTN20: 1000, PTN50: 1150}) // +15.0%
-	acc.addMesh(meshProps{MeshID: "b", Shi: "13102", PTN20: 1000, PTN50: 1247}) // +24.7%
-	acc.addMesh(meshProps{MeshID: "c", Shi: "12100", PTN20: 1000, PTN50: 900})  // 千葉=減（除外されるはず）
+	acc.addMesh(meshProps{MeshID: "a", Shi: "13101", PTN20: 1000, PTN50: 1150}) // 東京 +15.0%
+	acc.addMesh(meshProps{MeshID: "b", Shi: "12100", PTN20: 1000, PTN50: 1247}) // 千葉（対象・+24.7%）
+	acc.addMesh(meshProps{MeshID: "c", Shi: "19201", PTN20: 1000, PTN50: 900})  // 山梨=対象外（除外されるはず）
 
 	rows := acc.rates()
 	got := map[string]popChangeRow{}
 	for _, r := range rows {
 		got[r.Shi] = r
 	}
-	if _, ok := got["12100"]; ok {
-		t.Fatal("千葉(12)が率算出に混入している")
+	if _, ok := got["19201"]; ok {
+		t.Fatal("山梨(19・対象外)が率算出に混入している")
 	}
 	if r := got["13101"]; r.Status != "present" || math.Abs(r.Rate-0.15) > 1e-9 {
 		t.Fatalf("13101 率=%v status=%s want 0.15/present", r.Rate, r.Status)
 	}
-	if r := got["13102"]; math.Abs(r.Rate-0.247) > 1e-9 {
-		t.Fatalf("13102 率=%v want 0.247", r.Rate)
+	if r := got["12100"]; r.Status != "present" || math.Abs(r.Rate-0.247) > 1e-9 {
+		t.Fatalf("12100 率=%v status=%s want 0.247/present", r.Rate, r.Status)
 	}
-	// 結果は SHICODE 昇順（決定的）。
-	if len(rows) != 2 || rows[0].Shi != "13101" || rows[1].Shi != "13102" {
+	// 結果は SHICODE 昇順（決定的）。12100 < 13101。
+	if len(rows) != 2 || rows[0].Shi != "12100" || rows[1].Shi != "13101" {
 		t.Fatalf("昇順でない or 件数違い: %+v", rows)
 	}
 }

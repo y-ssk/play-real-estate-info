@@ -35,9 +35,9 @@ func main() {
 	// 対応指標：area_km2（admin_unit から算出）／pop_change_rate_2020_2050（XKT013 タイル群を集計・要 -data）。
 	metric := flag.String("metric", "", "投入する指標キー（例: area_km2, pop_change_rate_2020_2050, land_price_median）。指定時は指標投入モード（year/pref 不要）")
 	// -data は指標がローカルのファイル群（取得済みタイル等）を読む場合の入力ディレクトリ。
-	// area_km2 のような算出指標では不要。pop_change_rate_2020_2050 は data/xkt013/<vintage>/13、
-	// land_price_median は data/xpt002/<year>（pref サブディレクトリを再帰探索）を指す。
-	dataDir := flag.String("data", "", "指標が読む入力ディレクトリ（例: data/xkt013/2050/13, data/xpt002/2024）。ファイルを読む指標でのみ必要")
+	// area_km2 のような算出指標では不要。pop_change_rate_2020_2050 は data/xkt013/<vintage>、
+	// land_price_median は data/xpt002/<year>（いずれも pref サブディレクトリを再帰探索）を指す。
+	dataDir := flag.String("data", "", "指標が読む入力ディレクトリ（例: data/xkt013/2050, data/xpt002/2024）。ファイルを読む指標でのみ必要")
 	// -tiles モード：対象 pref の bbox からタイル取得範囲（z x y）を1行ずつ出力する（fetch スクリプトが読む）。
 	// タイル取得型指標（地価・人口・災害）のエリア・パラメータ化の継ぎ目（ADR-0030）。DB から ST_Extent を得る。
 	tiles := flag.Bool("tiles", false, "タイル取得範囲を出力するモード（-pref と -z を伴う。fetch スクリプト用・ADR-0030）")
@@ -90,7 +90,7 @@ func runMetric(metric, dataDir string) error {
 		return nil
 	case "pop_change_rate_2020_2050":
 		if dataDir == "" {
-			return fmt.Errorf("-metric=pop_change_rate_2020_2050 は -data を要する（例: -data=data/xkt013/2050/13。先に scripts/fetch-xkt013.sh）")
+			return fmt.Errorf("-metric=pop_change_rate_2020_2050 は -data を要する（例: -data=data/xkt013/2050。先に scripts/fetch-xkt013.sh）")
 		}
 		res, err := ingest.ComputePopChangeRate(ctx, dsn, dataDir)
 		if err != nil {
