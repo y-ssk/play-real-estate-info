@@ -21,6 +21,13 @@ describe("METRICS registry", () => {
     expect(METRICS.pop_change_rate_2020_2050?.source).toContain("推計");
   });
 
+  it("高齢化率は sequential・出典に XKT013 と「推計」が明記（ADR-0009 断定しない）", () => {
+    const def = METRICS.aging_rate_2050;
+    expect(def?.scale).toBe("sequential");
+    expect(def?.source).toContain("XKT013");
+    expect(def?.source).toContain("推計");
+  });
+
   it("地価中央値は sequential・単位 円/㎡・出典に XPT002/住宅地が明記（ADR-0008/0011）", () => {
     const def = METRICS.land_price_median;
     expect(def?.scale).toBe("sequential");
@@ -56,6 +63,19 @@ describe("増減率の整形（符号付き%・小数1桁）", () => {
   });
 
   it("0 は無印", () => {
+    expect(fmt?.(0)).toBe("0.0%");
+  });
+});
+
+describe("高齢化率の整形（符号なし%・小数1桁）", () => {
+  const fmt = METRICS.aging_rate_2050?.format;
+
+  it("非負の比率を + 符号なしで % 表示する（増減率と違い符号を付けない）", () => {
+    expect(fmt?.(0.35)).toBe("35.0%");
+    expect(fmt?.(0.207)).toBe("20.7%");
+  });
+
+  it("0 は 0.0%（小数1桁固定）", () => {
     expect(fmt?.(0)).toBe("0.0%");
   });
 });

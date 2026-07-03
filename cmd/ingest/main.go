@@ -33,7 +33,7 @@ func main() {
 	pref := flag.String("pref", "", "対象都道府県コード（2桁・例: 13）")
 	// -metric を指定すると指標投入モード（取得・鍵不要・DB 接続のみ）。N03 正規化とは別経路。
 	// 対応指標：area_km2（admin_unit から算出）／pop_change_rate_2020_2050（XKT013 タイル群を集計・要 -data）。
-	metric := flag.String("metric", "", "投入する指標キー（例: area_km2, pop_change_rate_2020_2050, land_price_median）。指定時は指標投入モード（year/pref 不要）")
+	metric := flag.String("metric", "", "投入する指標キー（例: area_km2, pop_change_rate_2020_2050, aging_rate_2050, land_price_median）。指定時は指標投入モード（year/pref 不要）")
 	// -data は指標がローカルのファイル群（取得済みタイル等）を読む場合の入力ディレクトリ。
 	// area_km2 のような算出指標では不要。pop_change_rate_2020_2050 は data/xkt013/<vintage>、
 	// land_price_median は data/xpt002/<year>（いずれも pref サブディレクトリを再帰探索）を指す。
@@ -99,6 +99,17 @@ func runMetric(metric, dataDir string) error {
 		log.Printf("ingest: 指標投入完了 metric=%s 投入件数=%d (present=%d none=%d) 率[min=%.3f max=%.3f] メッシュ採用=%d 重複skip=%d 県外skip=%d",
 			res.Metric, res.Inserted, res.Present, res.None, res.MinRate, res.MaxRate, res.MeshKept, res.DupSkipped, res.PrefSkipped)
 		return nil
+	case "aging_rate_2050":
+		if dataDir == "" {
+			return fmt.Errorf("-metric=aging_rate_2050 は -data を要する（例: -data=data/xkt013/2050。先に scripts/fetch-xkt013.sh）")
+		}
+		res, err := ingest.ComputeAgingRate(ctx, dsn, dataDir)
+		if err != nil {
+			return err
+		}
+		log.Printf("ingest: 指標投入完了 metric=%s 投入件数=%d (present=%d none=%d) 高齢化率[min=%.3f max=%.3f] メッシュ採用=%d 重複skip=%d 県外skip=%d",
+			res.Metric, res.Inserted, res.Present, res.None, res.MinRate, res.MaxRate, res.MeshKept, res.DupSkipped, res.PrefSkipped)
+		return nil
 	case "land_price_median":
 		if dataDir == "" {
 			return fmt.Errorf("-metric=land_price_median は -data を要する（例: -data=data/xpt002/2024。先に scripts/fetch-xpt002.sh）")
@@ -116,7 +127,7 @@ func runMetric(metric, dataDir string) error {
 			res.Metric, year, res.Inserted, res.Present, res.None, res.MinYen, res.MaxYen, res.PointsParsed, res.DupSkipped, res.NonResiSkip, res.BadPriceSkip)
 		return nil
 	default:
-		return fmt.Errorf("未対応の -metric=%q（対応: area_km2, pop_change_rate_2020_2050, land_price_median）", metric)
+		return fmt.Errorf("未対応の -metric=%q（対応: area_km2, pop_change_rate_2020_2050, aging_rate_2050, land_price_median）", metric)
 	}
 }
 
