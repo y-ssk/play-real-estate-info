@@ -16,10 +16,14 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/y-ssk/machilens/internal/db"
 	"github.com/y-ssk/machilens/internal/ingest"
+	"github.com/y-ssk/machilens/internal/tilegrid"
 )
 
 func main() {
@@ -29,13 +33,24 @@ func main() {
 	pref := flag.String("pref", "", "対象都道府県コード（2桁・例: 13）")
 	// -metric を指定すると指標投入モード（取得・鍵不要・DB 接続のみ）。N03 正規化とは別経路。
 	// 対応指標：area_km2（admin_unit から算出）／pop_change_rate_2020_2050（XKT013 タイル群を集計・要 -data）。
-	metric := flag.String("metric", "", "投入する指標キー（例: area_km2, pop_change_rate_2020_2050）。指定時は指標投入モード（year/pref 不要）")
+	metric := flag.String("metric", "", "投入する指標キー（例: area_km2, pop_change_rate_2020_2050, land_price_median）。指定時は指標投入モード（year/pref 不要）")
 	// -data は指標がローカルのファイル群（取得済みタイル等）を読む場合の入力ディレクトリ。
-	// area_km2 のような算出指標では不要。pop_change_rate_2020_2050 は data/xkt013/<vintage>/13 を指す。
-	dataDir := flag.String("data", "", "指標が読む入力ディレクトリ（例: data/xkt013/2050/13）。ファイルを読む指標でのみ必要")
+	// area_km2 のような算出指標では不要。pop_change_rate_2020_2050 は data/xkt013/<vintage>/13、
+	// land_price_median は data/xpt002/<year>（pref サブディレクトリを再帰探索）を指す。
+	dataDir := flag.String("data", "", "指標が読む入力ディレクトリ（例: data/xkt013/2050/13, data/xpt002/2024）。ファイルを読む指標でのみ必要")
+	// -tiles モード：対象 pref の bbox からタイル取得範囲（z x y）を1行ずつ出力する（fetch スクリプトが読む）。
+	// タイル取得型指標（地価・人口・災害）のエリア・パラメータ化の継ぎ目（ADR-0030）。DB から ST_Extent を得る。
+	tiles := flag.Bool("tiles", false, "タイル取得範囲を出力するモード（-pref と -z を伴う。fetch スクリプト用・ADR-0030）")
+	z := flag.Int("z", 0, "タイル取得のズーム（-tiles モードで使用。XPT002 は 13〜15）")
 	flag.Parse()
 
-	// モード分岐：-metric があれば指標投入（鍵不要・全単位一括）、無ければ従来の N03 正規化。
+	// モード分岐：-tiles があればタイル範囲出力、-metric があれば指標投入、無ければ従来の N03 正規化。
+	if *tiles {
+		if err := runTiles(*pref, *z); err != nil {
+			log.Fatalf("ingest: %v", err)
+		}
+		return
+	}
 	if *metric != "" {
 		if err := runMetric(*metric, *dataDir); err != nil {
 			log.Fatalf("ingest: %v", err)
@@ -84,8 +99,24 @@ func runMetric(metric, dataDir string) error {
 		log.Printf("ingest: 指標投入完了 metric=%s 投入件数=%d (present=%d none=%d) 率[min=%.3f max=%.3f] メッシュ採用=%d 重複skip=%d 県外skip=%d",
 			res.Metric, res.Inserted, res.Present, res.None, res.MinRate, res.MaxRate, res.MeshKept, res.DupSkipped, res.PrefSkipped)
 		return nil
+	case "land_price_median":
+		if dataDir == "" {
+			return fmt.Errorf("-metric=land_price_median は -data を要する（例: -data=data/xpt002/2024。先に scripts/fetch-xpt002.sh）")
+		}
+		// 取得対象年は -data 末尾のディレクトリ名（<year>）から取る（data/xpt002/2024 → 2024）。
+		year, err := yearFromDataDir(dataDir)
+		if err != nil {
+			return err
+		}
+		res, err := ingest.ComputeLandPriceMedian(ctx, dsn, dataDir, year)
+		if err != nil {
+			return err
+		}
+		log.Printf("ingest: 指標投入完了 metric=%s year=%d 投入件数=%d (present=%d none=%d) 中央値[min=%.0f max=%.0f]円/㎡ 採用点=%d 重複skip=%d 非住宅skip=%d 価格不良skip=%d",
+			res.Metric, year, res.Inserted, res.Present, res.None, res.MinYen, res.MaxYen, res.PointsParsed, res.DupSkipped, res.NonResiSkip, res.BadPriceSkip)
+		return nil
 	default:
-		return fmt.Errorf("未対応の -metric=%q（対応: area_km2, pop_change_rate_2020_2050）", metric)
+		return fmt.Errorf("未対応の -metric=%q（対応: area_km2, pop_change_rate_2020_2050, land_price_median）", metric)
 	}
 }
 
@@ -118,4 +149,78 @@ func run(year int, pref string) error {
 	log.Printf("ingest: 正規化完了 year=%d pref=%s 投入件数=%d サンプル(code=%s name=%q)",
 		year, pref, res.Inserted, res.SampleCode, res.SampleName)
 	return nil
+}
+
+// runTiles は対象 pref のタイル取得範囲を「z x y」1行ずつ標準出力へ書く（fetch スクリプトが読む）。
+//
+// bbox は tilegrid.PrefBBoxOverride に明示があればそれを、無ければ admin_unit の ST_Extent を使う
+// （ADR-0030：ST_Extent または明示 bbox。東京は島嶼を除く本土 bbox を明示）。z は API 制約で呼び出し側が
+// 渡す（XPT002 は 13〜15）。出力は行指向＝bash が while read で回して1タイルずつ取得できる（継ぎ目・ADR-0030）。
+func runTiles(pref string, z int) error {
+	if len(pref) != 2 {
+		return fmt.Errorf("-pref は2桁の都道府県コードを指定する（例: -pref=13）: 受領=%q", pref)
+	}
+	if z <= 0 {
+		return fmt.Errorf("-z はタイルのズームを指定する（XPT002 は 13〜15）: 受領=%d", z)
+	}
+
+	bbox, ok := tilegrid.PrefBBoxOverride[pref]
+	if !ok {
+		var err error
+		bbox, err = prefBBoxFromDB(pref)
+		if err != nil {
+			return err
+		}
+	}
+	r, err := tilegrid.RangeFor(bbox, z)
+	if err != nil {
+		return err
+	}
+	// 進捗・件数は stderr（fetch スクリプトのログ）へ。タイル座標は stdout（スクリプトが read で拾う）へ。
+	fmt.Fprintf(os.Stderr, "tiles: pref=%s z=%d x=[%d..%d] y=[%d..%d] 枚数=%d\n",
+		pref, r.Z, r.XMin, r.XMax, r.YMin, r.YMax, r.Count())
+	for _, t := range r.Tiles() {
+		fmt.Printf("%d %d %d\n", t.Z, t.X, t.Y)
+	}
+	return nil
+}
+
+// prefBBoxFromDB は admin_unit の該当 pref を ST_Extent で束ねて bbox を返す（明示 override が無い県用）。
+func prefBBoxFromDB(pref string) (tilegrid.BBox, error) {
+	dsn, err := db.DSNFromEnv()
+	if err != nil {
+		return tilegrid.BBox{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return tilegrid.BBox{}, fmt.Errorf("DB へ接続できない（POSTGRES_* と DB 起動を確認）: %w", err)
+	}
+	defer conn.Close(ctx)
+
+	// ST_Extent の各辺を数値で取る（BOX 文字列のパースを避け SQL で分解）。pref は上2桁で絞る。
+	var minLon, minLat, maxLon, maxLat float64
+	err = conn.QueryRow(ctx, `
+SELECT ST_XMin(e), ST_YMin(e), ST_XMax(e), ST_YMax(e)
+FROM (SELECT ST_Extent(geom) AS e FROM admin_unit
+      WHERE unit_kind='municipality' AND left(code,2)=$1) s`, pref).
+		Scan(&minLon, &minLat, &maxLon, &maxLat)
+	if err != nil {
+		return tilegrid.BBox{}, fmt.Errorf("admin_unit(pref %s) の ST_Extent 取得に失敗（先に N03 投入か）: %w", pref, err)
+	}
+	return tilegrid.BBox{MinLon: minLon, MinLat: minLat, MaxLon: maxLon, MaxLat: maxLat}, nil
+}
+
+// yearFromDataDir は data/xpt002/<year> の末尾ディレクトリ名から年（4桁）を取り出す。
+//
+// 取得年を -data パスの規約（配置規約 data/xpt002/<year>/<pref>/）から一意に決める＝別フラグを増やさず
+// 取得物と投入年を食い違わせない（取得したファイルの年 = 投入する year）。
+func yearFromDataDir(dataDir string) (int, error) {
+	base := filepath.Base(filepath.Clean(dataDir))
+	y, err := strconv.Atoi(base)
+	if err != nil || y < 1995 || y > 2100 {
+		return 0, fmt.Errorf("-data の末尾が年(4桁)でない（%q）。配置規約 data/xpt002/<year> に合わせる", dataDir)
+	}
+	return y, nil
 }

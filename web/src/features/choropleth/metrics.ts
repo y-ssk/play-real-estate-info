@@ -48,6 +48,11 @@ function formatKm2(value: number): string {
   return value.toLocaleString("ja-JP", { maximumFractionDigits: 1 });
 }
 
+/** 円整形（整数・桁区切り）。地価（円/㎡）は端数を持たない大きな整数ゆえ小数を出さずカンマ区切りで示す。 */
+function formatYen(value: number): string {
+  return Math.round(value).toLocaleString("ja-JP", { maximumFractionDigits: 0 });
+}
+
 /**
  * 面塗り指標の registry（キー→定義）。新指標はここに1エントリ足す。
  *
@@ -72,10 +77,25 @@ export const METRICS: Record<string, MetricDef> = {
     source: "出典：国土数値情報 将来推計人口250mメッシュ（XKT013）／推計（2020→2050）",
     format: formatPercentSigned,
   },
+  land_price_median: {
+    key: "land_price_median",
+    title: "公的地価の中央値（住宅地）",
+    unit: "円/㎡",
+    // 量＝sequential（非負の地価水準。0起点でなくてよい・緑系ランプは面積・人口・相場を想定＝mapTokens §逐次）。
+    scale: "sequential",
+    // 公的地価（地価公示＋地価調査）由来・住宅地の当年地価の中央値（ADR-0008/0011 出典は法的要件）。
+    source:
+      "出典：国土交通省 不動産情報ライブラリ 地価公示・地価調査（XPT002）／住宅地・当年・中央値",
+    format: formatYen,
+  },
 };
 
 /** 面塗りで切り替えられる指標キーの並び（トグルの表示順）。 */
-export const METRIC_ORDER: readonly string[] = ["area_km2", "pop_change_rate_2020_2050"];
+export const METRIC_ORDER: readonly string[] = [
+  "area_km2",
+  "pop_change_rate_2020_2050",
+  "land_price_median",
+];
 
 /** 既定の表示指標（初期表示）。 */
 export const DEFAULT_METRIC = "area_km2";
