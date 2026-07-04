@@ -207,12 +207,14 @@ export const CHOROPLETH_MATCHED_OUTLINE_WIDTH: OutlineWidth = [
 ];
 
 /**
- * 面塗りの段階色ランプ（逐次＝シーケンシャル・DESIGN §1）。
+ * 面塗りの段階色ランプ（逐次＝シーケンシャル・緑＝**相場**の色相・DESIGN §1・`ADR-0032`）。
  *
- * 用途＝「量の多寡」を濃淡で見せる中立系（面積・人口・相場など）。**青（浸水想定の慣例色）と
- * コーラル（UIの操作色）を避ける**（DESIGN §1 データ色とUI色の分離・慣例の保護）ため、緑系の
- * 単色シーケンシャル（淡→濃）を採る。緑はハザード（青/暖色）にも操作色にも被らない中立量の色。
- * 段は5段（薄い順）。凡例（{@link CHOROPLETH_FILL_LEGEND}）と同じ並びで一貫させる。
+ * `ADR-0032`（面塗りの色相体系）で緑は**相場（地価）分野**の色相に意味づけた（かつては全逐次指標で
+ * 共有していた＝緑独占。トグルで指標を切り替えても緑の濃淡ばかりで識別しづらかった層4懸念への対処）。
+ * 逐次指標は自分の分野の色相ランプ（緑=相場／灰=基盤(面積)／紫=将来(高齢化)）を選び、
+ * {@link choroplethFillColor}／{@link choroplethFillLegend} に渡す（既定は後方互換で本 緑ランプ）。
+ * **青（浸水想定の慣例色）とコーラル（UIの操作色）は避ける**（DESIGN §1 データ色とUI色の分離）。
+ * 段は5段（薄い順・ColorBrewer 系）。凡例と地図で同じ並びを使い一貫させる。
  */
 export const CHOROPLETH_FILL_RAMP = [
   "#edf8e9",
@@ -220,6 +222,36 @@ export const CHOROPLETH_FILL_RAMP = [
   "#74c476",
   "#31a354",
   "#006d2c",
+] as const;
+
+/**
+ * 逐次ランプ・紫（ColorBrewer Purples・5段 薄→濃）＝**将来（高齢化率）**の色相（`ADR-0032`）。
+ *
+ * 将来分野を紫系で束ねる（人口増減=発散 紫↔緑・高齢化=本 逐次 紫）。青（水害）・緑（相場）・
+ * コーラル（UI）と色相で割れ、トグル切替で「今は将来指標」と識別できる。各段内は濃淡＝量の大小のみ
+ * （良し悪しを込めない・`ADR-0005`）。**具体の見え方は層4目視で評価・確定**（暫定・`ADR-0032`結論6）。
+ */
+export const CHOROPLETH_FILL_RAMP_PURPLE = [
+  "#f2f0f7",
+  "#cbc9e2",
+  "#9e9ac8",
+  "#756bb1",
+  "#54278f",
+] as const;
+
+/**
+ * 逐次ランプ・灰（ColorBrewer Greys・5段 薄→濃）＝**基盤（面積）**の色相（`ADR-0032`）。
+ *
+ * 面積は分野横断の「基盤」量ゆえ中立の灰で束ねる。データ色（青/緑/紫/暖色）と競合しない。
+ * ただし境界線＝スレート（{@link CHOROPLETH_OUTLINE_COLOR}）と近い中立系のため、面(灰)と線(スレート)が
+ * 紛れないかは**層4目視で評価・確定**（暫定・`ADR-0032`結論6）。各段内は濃淡＝量の大小のみ（`ADR-0005`）。
+ */
+export const CHOROPLETH_FILL_RAMP_GREY = [
+  "#f7f7f7",
+  "#cccccc",
+  "#969696",
+  "#636363",
+  "#252525",
 ] as const;
 
 /** 面塗りの不透明度。基図（地名・道路）を透かして読めるよう塗りつぶさない（層4 目視）。 */
@@ -254,21 +286,29 @@ export interface FillLegendStop {
 }
 
 /**
- * choroplethFillColor は値域 [min,max] を {@link CHOROPLETH_FILL_RAMP} で段階色に写す式を返す。
+ * choroplethFillColor は値域 [min,max] を逐次ランプ `ramp` で段階色に写す式を返す。
  *
- * feature-state の `value` を読み、min→max を5段の緑へ線形補間する（`interpolate`）。**データなし
+ * feature-state の `value` を読み、min→max を `ramp` の各段へ線形補間する（`interpolate`）。**データなし
  * （state に value が無い／null）は塗らない＝色抜き**：value が無い feature では `feature-state` の
  * value が未定義になり、`fill-color` は評価されず（fill-opacity を別途 0 にして抜く・ChoroplethLayer 側）
- * 基図がそのまま見える。色段の境界はランプと同一なので凡例と必ず一致する。
+ * 基図がそのまま見える。色段の境界はランプと同一なので凡例（{@link choroplethFillLegend}）と必ず一致する。
+ *
+ * **ランプは指標の分野色相を渡す**（緑=相場／灰=面積／紫=高齢化・`ADR-0032` の色相体系）。既定は緑ランプ
+ * （後方互換・相場の色相）。呼び出し側は metric 定義の色相からランプを選んで渡す（ChoroplethLayer/Legend）。
  *
  * @param min 値域の下限（描画対象の最小値）。
  * @param max 値域の上限（描画対象の最大値）。
+ * @param ramp 逐次色ランプ（薄→濃・既定は {@link CHOROPLETH_FILL_RAMP}＝緑/相場）。
  */
-export function choroplethFillColor(min: number, max: number): FillColor {
+export function choroplethFillColor(
+  min: number,
+  max: number,
+  ramp: readonly string[] = CHOROPLETH_FILL_RAMP,
+): FillColor {
   // min==max（全単位同値・1件のみ等）の退化を避け、最低限の幅を確保する（ゼロ除算的な潰れ防止）。
   const span = max > min ? max - min : 1;
-  const stops = CHOROPLETH_FILL_RAMP.flatMap((color, i) => {
-    const bound = min + (span * i) / (CHOROPLETH_FILL_RAMP.length - 1);
+  const stops = ramp.flatMap((color, i) => {
+    const bound = min + (span * i) / (ramp.length - 1);
     return [bound, color];
   });
   return ["interpolate", ["linear"], ["feature-state", "value"], ...stops] as FillColor;
@@ -277,14 +317,21 @@ export function choroplethFillColor(min: number, max: number): FillColor {
 /**
  * choroplethFillLegend は凡例の段（色＋下限値）を返す（地図の色式と同じ stops＝必ず一致）。
  *
+ * ランプは {@link choroplethFillColor} と同じものを渡すこと（凡例と地図で色相・段が一致する条件）。
+ *
  * @param min 値域の下限。
  * @param max 値域の上限。
+ * @param ramp 逐次色ランプ（薄→濃・既定は {@link CHOROPLETH_FILL_RAMP}＝緑/相場）。
  */
-export function choroplethFillLegend(min: number, max: number): FillLegendStop[] {
+export function choroplethFillLegend(
+  min: number,
+  max: number,
+  ramp: readonly string[] = CHOROPLETH_FILL_RAMP,
+): FillLegendStop[] {
   const span = max > min ? max - min : 1;
-  return CHOROPLETH_FILL_RAMP.map((color, i) => ({
+  return ramp.map((color, i) => ({
     color,
-    lowerBound: min + (span * i) / (CHOROPLETH_FILL_RAMP.length - 1),
+    lowerBound: min + (span * i) / (ramp.length - 1),
   }));
 }
 

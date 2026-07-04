@@ -4,6 +4,8 @@ import {
   CHOROPLETH_DIVERGING_RAMP,
   CHOROPLETH_FILL_OPACITY_EXPR,
   CHOROPLETH_FILL_RAMP,
+  CHOROPLETH_FILL_RAMP_GREY,
+  CHOROPLETH_FILL_RAMP_PURPLE,
   CHOROPLETH_HOVER_FILL_OPACITY_EXPR,
   CHOROPLETH_HOVER_OUTLINE_WIDTH,
   CHOROPLETH_MATCHED_OUTLINE_WIDTH,
@@ -84,6 +86,22 @@ describe("choroplethFillColor", () => {
     expect(stops[0]).toBe(50);
     expect(stops[8]).toBe(51);
   });
+
+  it("ramp を渡すとその色相ランプの色を使う（色相体系・ADR-0032）", () => {
+    // 既定（緑）と渡した色相（紫）で先頭・末尾の色が切り替わる＝ランプが効いている。
+    const green = choroplethFillColor(0, 100) as unknown[];
+    expect(green[4]).toBe(CHOROPLETH_FILL_RAMP[0]);
+
+    const purple = choroplethFillColor(0, 100, CHOROPLETH_FILL_RAMP_PURPLE) as unknown[];
+    const pStops = purple.slice(3);
+    expect(pStops[1]).toBe(CHOROPLETH_FILL_RAMP_PURPLE[0]);
+    expect(pStops[9]).toBe(CHOROPLETH_FILL_RAMP_PURPLE[4]);
+
+    const grey = choroplethFillColor(0, 100, CHOROPLETH_FILL_RAMP_GREY) as unknown[];
+    const gStops = grey.slice(3);
+    expect(gStops[1]).toBe(CHOROPLETH_FILL_RAMP_GREY[0]);
+    expect(gStops[9]).toBe(CHOROPLETH_FILL_RAMP_GREY[4]);
+  });
 });
 
 describe("choroplethFillLegend", () => {
@@ -93,6 +111,28 @@ describe("choroplethFillLegend", () => {
     expect(legend[0]).toEqual({ color: CHOROPLETH_FILL_RAMP[0], lowerBound: 10 });
     expect(legend[4]?.lowerBound).toBe(90);
     expect(legend.map((s) => s.color)).toEqual([...CHOROPLETH_FILL_RAMP]);
+  });
+
+  it("ramp を渡すとその色相の色段で凡例を作る（地図と同一ランプ＝一致）", () => {
+    const legend = choroplethFillLegend(10, 90, CHOROPLETH_FILL_RAMP_PURPLE);
+    expect(legend.map((s) => s.color)).toEqual([...CHOROPLETH_FILL_RAMP_PURPLE]);
+    // 下限値の並びはランプに依らず値域で決まる（色相だけが変わる）。
+    expect(legend[0]?.lowerBound).toBe(10);
+    expect(legend[4]?.lowerBound).toBe(90);
+  });
+});
+
+describe("色相別 逐次ランプ（ADR-0032・色相体系）", () => {
+  it("紫・灰ランプは5段（薄→濃）で緑と別色相（識別のための色相分け）", () => {
+    expect(CHOROPLETH_FILL_RAMP_PURPLE).toHaveLength(5);
+    expect(CHOROPLETH_FILL_RAMP_GREY).toHaveLength(5);
+    // 3ランプは相互に別色（先頭の淡色が異なる＝色相で区別できる）。
+    const heads = [
+      CHOROPLETH_FILL_RAMP[0],
+      CHOROPLETH_FILL_RAMP_PURPLE[0],
+      CHOROPLETH_FILL_RAMP_GREY[0],
+    ];
+    expect(new Set(heads).size).toBe(3);
   });
 });
 

@@ -9,24 +9,40 @@
  *  - `sequential` … 量の多寡（面積・人口など非負量）。淡→濃の単方向ランプ（`mapTokens` 緑系）。
  *  - `diverging`  … 符号付き（増減率＝0%を境に減少↔増加）。中央0を境に2色へ分かれる発散ランプ
  *    （`mapTokens` 紫↔緑）。0 中心ゆえ「増えた/減った」が一目で割れる。
- * 配色の実体（色値・式）は `mapTokens.ts` に集約し、ここは「どの方式か」だけを持つ（生値を持たない・§4）。
+ * 配色の実体（色値・式）は `mapTokens.ts` に集約し、ここは「どの方式か・どの色相か」だけを持つ（生値を持たない・§4）。
  */
+
+import {
+  CHOROPLETH_FILL_RAMP,
+  CHOROPLETH_FILL_RAMP_GREY,
+  CHOROPLETH_FILL_RAMP_PURPLE,
+} from "../../styles/mapTokens";
 
 /** 面塗りの配色方式（値→色の写し方）。`mapTokens` の色式とランプを選ぶ軸。 */
 export type MetricScale = "sequential" | "diverging";
 
 /**
- * 1指標の表示定義。値そのものは `/values` から取り、ここは「見せ方」だけを持つ。
+ * 逐次指標の色相（分野で色相を束ねる・`ADR-0032`）。`scale:"sequential"` の指標が持つ。
+ *
+ * 分野で色相を分け、トグルで指標を切り替えた時に「今どの分野か」を色相で識別できるようにする
+ * （緑独占の解消）：緑=相場／紫=将来(高齢化)／灰=基盤(面積)。各色相のランプ実体は `mapTokens`
+ * （`CHOROPLETH_FILL_RAMP`/`_PURPLE`/`_GREY`）に集約し、ここは「どの色相か」だけを持つ（生値を持たない・§4）。
+ * **発散（diverging）は 0 中央の PRGn 固定ゆえ hue を持たない**（人口増減など符号付き専用）。
+ * **将来 sequential 指標を足す人は必ず色相を選ぶ**＝体系から外れられない構造（`ADR-0032` 結論・実装）。
  */
-export interface MetricDef {
+export type MetricHue = "green" | "purple" | "grey";
+
+/**
+ * 1指標の表示定義の共通部分（値そのものは `/values` から取り、ここは「見せ方」だけを持つ）。
+ * 配色方式（scale）で {@link MetricDef} を判別ユニオンに分けるための土台。
+ */
+interface MetricDefBase {
   /** 指標キー（`/api/choropleth/values?metric=` と一致＝結合キー）。 */
   key: string;
   /** 凡例・トグルの表示名（日本語）。 */
   title: string;
   /** 単位の表示（凡例の右端等）。無単位（率を%表示する等）は空文字。 */
   unit: string;
-  /** 配色方式（量＝sequential／符号付き＝diverging）。 */
-  scale: MetricScale;
   /** 出典表示（法的要件・ADR-0011／frontend-conventions §5）。推計は「推計」を明示（ADR-0009）。 */
   source: string;
   /**
@@ -35,6 +51,25 @@ export interface MetricDef {
    */
   format: (value: number) => string;
 }
+
+/**
+ * 1指標の表示定義（配色方式で判別する判別ユニオン）。
+ *
+ * **`scale:"sequential"` は `hue`（分野色相）を必須にする**（`ADR-0032`）＝将来 sequential 指標を足す人は
+ * 型で色相の指定を強制され、色相体系から外れられない（`hue` を書かないとコンパイルが通らない・緑独占の再発防止）。
+ * **`scale:"diverging"` は `hue` を持たない**（0 中央の PRGn 固定・符号付き専用）＝余計な色相指定を型で禁じる。
+ */
+export type MetricDef =
+  | (MetricDefBase & {
+      /** 配色方式＝量（非負量を淡→濃の単方向ランプで見せる）。 */
+      scale: "sequential";
+      /** 分野色相（必須・`ADR-0032`）。緑=相場／紫=将来(高齢化)／灰=基盤(面積)。ランプ実体は `mapTokens`。 */
+      hue: MetricHue;
+    })
+  | (MetricDefBase & {
+      /** 配色方式＝符号付き（0 を境に減少↔増加を PRGn 発散ランプで見せる）。色相は固定ゆえ `hue` を持たない。 */
+      scale: "diverging";
+    });
 
 /** パーセント整形（符号付き・小数1桁）。増減率（0.15→「+15.0%」, -0.08→「-8.0%」）に使う。 */
 function formatPercentSigned(value: number): string {
@@ -65,11 +100,15 @@ function formatYen(value: number): string {
 /**
  * 面塗り指標の registry（キー→定義）。新指標はここに1エントリ足す。
  *
- * - `area_km2`（②a・既存）：市区町村面積。量＝sequential（緑）。出典は N03 由来の算出。
- * - `pop_change_rate_2020_2050`（②c）：将来人口増減率。符号付き＝diverging（0%中心）。
+ * - `area_km2`（②a・既存）：市区町村面積。量＝sequential・色相=灰（基盤・`ADR-0032`）。出典は N03 由来の算出。
+ * - `pop_change_rate_2020_2050`（②c）：将来人口増減率。符号付き＝diverging（0%中心・PRGn 固定＝hue なし）。
  *   **推計値ゆえ出典に「推計(2020→2050)」を明示**（ADR-0009 断定しない）。
- * - `aging_rate_2050`（②e・本スライス）：高齢化率（推計 2050）。非負の比率＝量＝sequential（緑）。
+ * - `aging_rate_2050`（②e）：高齢化率（推計 2050）。非負の比率＝量＝sequential・色相=紫（将来・`ADR-0032`）。
  *   **推計値ゆえ出典に「推計(2050)」を明示**（ADR-0009）。市区町村ごとに ΣPTC/ΣPTN（人口重み付き比）。
+ * - `land_price_median`（2d）：公的地価の中央値。量＝sequential・色相=緑（相場・`ADR-0032`）。
+ *
+ * 色相（hue）は分野で色相を束ねる体系（緑=相場／紫=将来／灰=基盤・`ADR-0032`）。トグルで指標を切り替えても
+ * 色相で分野が識別できる（かつての緑独占＝全逐次が緑で見分けづらかった懸念の解消）。**発散は hue を持たない**。
  */
 export const METRICS: Record<string, MetricDef> = {
   area_km2: {
@@ -77,6 +116,8 @@ export const METRICS: Record<string, MetricDef> = {
     title: "市区町村の面積",
     unit: "km²",
     scale: "sequential",
+    // 基盤（面積）＝分野横断の量ゆえ中立の灰で束ねる（`ADR-0032`）。境界線スレートとの紛れは層4評価。
+    hue: "grey",
     source: "出典：国土数値情報 行政区域データ（N03）より算出",
     format: formatKm2,
   },
@@ -92,9 +133,11 @@ export const METRICS: Record<string, MetricDef> = {
     key: "aging_rate_2050",
     title: "高齢化率（推計 2050）",
     unit: "",
-    // 量＝sequential（高齢化率は非負の比率＝多寡を濃淡で見せる。0起点でなくてよい・緑系ランプ）。
+    // 量＝sequential（高齢化率は非負の比率＝多寡を濃淡で見せる。0起点でなくてよい）。
     // 増減率のような符号付き（0中心で発散）ではないため diverging にしない。
     scale: "sequential",
+    // 将来分野＝紫で束ねる（人口増減=発散 紫↔緑・高齢化=逐次 紫・`ADR-0032`）。見え方は層4評価。
+    hue: "purple",
     // 将来推計人口(XKT013)由来・推計2050 の高齢化率（65歳以上人口÷総数）。**推計ゆえ「推計」を明示**
     // （ADR-0009 断定しない・ADR-0011 出典は法的要件）。算出は市区町村ごとに ΣPTC/ΣPTN（人口重み付き比）。
     source:
@@ -105,8 +148,9 @@ export const METRICS: Record<string, MetricDef> = {
     key: "land_price_median",
     title: "公的地価の中央値（住宅地）",
     unit: "円/㎡",
-    // 量＝sequential（非負の地価水準。0起点でなくてよい・緑系ランプは面積・人口・相場を想定＝mapTokens §逐次）。
+    // 量＝sequential（非負の地価水準。0起点でなくてよい）。相場分野＝緑で束ねる（`ADR-0032`）。
     scale: "sequential",
+    hue: "green",
     // 公的地価（地価公示＋地価調査）由来・住宅地の当年地価の中央値（ADR-0008/0011 出典は法的要件）。
     source:
       "出典：国土交通省 不動産情報ライブラリ 地価公示・地価調査（XPT002）／住宅地・当年・中央値",
@@ -124,3 +168,30 @@ export const METRIC_ORDER: readonly string[] = [
 
 /** 既定の表示指標（初期表示）。 */
 export const DEFAULT_METRIC = "area_km2";
+
+/**
+ * 色相（{@link MetricHue}）→逐次ランプ（`mapTokens`）の対応表（**1か所**・`ADR-0032`）。
+ *
+ * Layer/Legend はここを介してランプを引き、`choroplethFillColor`/`choroplethFillLegend` に渡す
+ * ＝色相→ランプの対応が分散しない（体系から外れられない構造）。ランプ実体は `mapTokens` に集約（§4）。
+ */
+export const HUE_RAMPS: Record<MetricHue, readonly string[]> = {
+  green: CHOROPLETH_FILL_RAMP,
+  purple: CHOROPLETH_FILL_RAMP_PURPLE,
+  grey: CHOROPLETH_FILL_RAMP_GREY,
+};
+
+/**
+ * sequentialFillRamp は指標定義の色相に対応する逐次ランプを返す（Layer/Legend 共通の1本の窓口）。
+ *
+ * 逐次指標（`scale:"sequential"`）は必ず `hue` を持つ（型で保証・`ADR-0032`）ため色相からランプが一意に決まる。
+ * 発散指標は本関数を通さない（0 中央の PRGn 固定・呼び出し側が scale で分岐）。未知/未定義 metric は安全側で緑。
+ *
+ * @param def 指標定義（未定義もあり得る＝未知 metric キー）。
+ */
+export function sequentialFillRamp(def: MetricDef | undefined): readonly string[] {
+  if (def && def.scale === "sequential") {
+    return HUE_RAMPS[def.hue];
+  }
+  return CHOROPLETH_FILL_RAMP;
+}

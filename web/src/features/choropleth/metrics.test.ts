@@ -1,4 +1,9 @@
-import { DEFAULT_METRIC, METRICS, METRIC_ORDER } from "./metrics";
+import {
+  CHOROPLETH_FILL_RAMP,
+  CHOROPLETH_FILL_RAMP_GREY,
+  CHOROPLETH_FILL_RAMP_PURPLE,
+} from "../../styles/mapTokens";
+import { DEFAULT_METRIC, METRICS, METRIC_ORDER, sequentialFillRamp } from "./metrics";
 
 describe("METRICS registry", () => {
   it("トグルの並び（METRIC_ORDER）は全て registry に存在する", () => {
@@ -34,6 +39,41 @@ describe("METRICS registry", () => {
     expect(def?.unit).toBe("円/㎡");
     expect(def?.source).toContain("XPT002");
     expect(def?.source).toContain("住宅地");
+  });
+});
+
+describe("面塗り指標の色相体系（ADR-0032・分野で色相を束ねる）", () => {
+  it("逐次指標は分野色相を持つ：面積=灰・地価=緑・高齢化=紫（緑独占の解消）", () => {
+    const area = METRICS.area_km2;
+    const land = METRICS.land_price_median;
+    const aging = METRICS.aging_rate_2050;
+    // 判別ユニオンゆえ sequential のときだけ hue にアクセスできる（型で保証）。
+    expect(area?.scale === "sequential" && area.hue).toBe("grey");
+    expect(land?.scale === "sequential" && land.hue).toBe("green");
+    expect(aging?.scale === "sequential" && aging.hue).toBe("purple");
+  });
+
+  it("発散指標（人口増減率）は色相を持たない（0中央 PRGn 固定）", () => {
+    const pop = METRICS.pop_change_rate_2020_2050;
+    expect(pop?.scale).toBe("diverging");
+    // diverging には hue キーが無い（型でも実データでも）。
+    expect(pop && "hue" in pop).toBe(false);
+  });
+
+  it("全ての sequential 指標が色相を持つ＝体系から外れられない（新指標も型で強制）", () => {
+    for (const def of Object.values(METRICS)) {
+      if (def.scale === "sequential") {
+        expect(["green", "purple", "grey"]).toContain(def.hue);
+      }
+    }
+  });
+
+  it("sequentialFillRamp は色相→ランプの対応を返す（Layer/Legend 共通の1窓口）", () => {
+    expect(sequentialFillRamp(METRICS.area_km2)).toEqual(CHOROPLETH_FILL_RAMP_GREY);
+    expect(sequentialFillRamp(METRICS.land_price_median)).toEqual(CHOROPLETH_FILL_RAMP);
+    expect(sequentialFillRamp(METRICS.aging_rate_2050)).toEqual(CHOROPLETH_FILL_RAMP_PURPLE);
+    // 未知/未定義 metric は安全側で緑ランプ（後方互換）。
+    expect(sequentialFillRamp(undefined)).toEqual(CHOROPLETH_FILL_RAMP);
   });
 });
 
