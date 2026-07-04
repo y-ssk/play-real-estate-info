@@ -18,7 +18,7 @@ import {
   choroplethFillColor,
   divergingFillColor,
 } from "../../styles/mapTokens";
-import { DEFAULT_METRIC, METRICS } from "./metrics";
+import { DEFAULT_METRIC, METRICS, sequentialFillRamp } from "./metrics";
 import { useChoroplethGeometry } from "./useChoroplethGeometry";
 import { useChoroplethValues } from "./useChoroplethValues";
 
@@ -160,18 +160,25 @@ const selectedLayer: LineLayer = {
 /**
  * 面塗りレイヤーのスタイルを値域と配色方式から組む。
  *
- * 配色方式は指標定義（{@link METRICS}）の `scale` で分岐する：量＝sequential（緑・0起点でなくてよい）、
- * 符号付き＝diverging（0 中央の発散）。**データなしは色抜き**：value（feature-state）が無い/null の feature は
- * fill-opacity を 0 にし基図をそのまま見せる（ADR-0011）。値がある feature だけ不透明度を載せる。
+ * 配色方式は指標定義（{@link METRICS}）の `scale` で分岐する：量＝sequential（分野色相の逐次ランプ・
+ * `ADR-0032`＝緑/相場・紫/将来・灰/基盤。0起点でなくてよい）、符号付き＝diverging（0 中央の発散・PRGn 固定）。
+ * 逐次のランプは `ramp`（呼び出し側が指標の色相から解決＝{@link sequentialFillRamp}）で渡す。
+ * **データなしは色抜き**：value（feature-state）が無い/null の feature は fill-opacity を 0 にし基図を
+ * そのまま見せる（ADR-0011）。値がある feature だけ不透明度を載せる。
  */
-function buildFillLayer(min: number, max: number, scale: "sequential" | "diverging"): FillLayer {
+function buildFillLayer(
+  min: number,
+  max: number,
+  scale: "sequential" | "diverging",
+  ramp: readonly string[],
+): FillLayer {
   return {
     id: FILL_LAYER_ID,
     type: "fill",
     source: SOURCE_ID,
     paint: {
       "fill-color":
-        scale === "diverging" ? divergingFillColor(min, max) : choroplethFillColor(min, max),
+        scale === "diverging" ? divergingFillColor(min, max) : choroplethFillColor(min, max, ramp),
       // データなしは色抜き（state 未設定/null は不透明度0）。式はトークンに集約（§4）。
       "fill-opacity": CHOROPLETH_FILL_OPACITY_EXPR,
     },
@@ -355,9 +362,11 @@ export function ChoroplethLayer({
   }
 
   // 値域が無い間（値未取得/全データなし）は面塗りを出さず輪郭線のみ＝形は先に見える。
-  // scale は指標定義から（未知 metric は安全側で sequential）。
+  // scale は指標定義から（未知 metric は安全側で sequential）。逐次ランプは色相体系（`ADR-0032`）から解決
+  // ＝緑/相場・紫/将来・灰/基盤（発散は buildFillLayer 内で PRGn 固定ゆえ ramp は使われない）。
   const scale = def?.scale ?? "sequential";
-  const fillLayer = range ? buildFillLayer(range.min, range.max, scale) : null;
+  const ramp = sequentialFillRamp(def);
+  const fillLayer = range ? buildFillLayer(range.min, range.max, scale, ramp) : null;
 
   return (
     // feature.id は geometry API が5桁コードを付与済み（文字列トップレベル id）。MapLibre はこれを

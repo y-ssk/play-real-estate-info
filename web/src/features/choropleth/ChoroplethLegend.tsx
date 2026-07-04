@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { choroplethFillLegend, divergingFillLegend } from "../../styles/mapTokens";
-import { DEFAULT_METRIC, METRICS } from "./metrics";
+import { DEFAULT_METRIC, METRICS, sequentialFillRamp } from "./metrics";
 import { useChoroplethValues } from "./useChoroplethValues";
 
 /**
@@ -33,9 +33,11 @@ export function ChoroplethLegend({ metric = DEFAULT_METRIC }: { metric?: string 
   }
 
   const isDiverging = def.scale === "diverging";
+  // 逐次は指標の色相ランプ（`ADR-0032`＝緑/相場・紫/将来・灰/基盤）で凡例を作る＝地図（ChoroplethLayer）と
+  // 同じランプ・同じ stops ゆえ凡例と地図の色が必ず一致する（二重管理しない）。
   const stops = isDiverging
     ? divergingFillLegend(range.min, range.max)
-    : choroplethFillLegend(range.min, range.max);
+    : choroplethFillLegend(range.min, range.max, sequentialFillRamp(def));
   // 凡例の両端ラベル：発散は対称ドメイン（stops 先頭=最小負側・末尾=最大正側）の実値を出し、0 が中央に来る
   // ことを「中央0%」ラベルで明示する（推計の符号がどちら向きか読者に分からせる）。
   const lowLabel = def.format(stops[0]?.lowerBound ?? range.min);
