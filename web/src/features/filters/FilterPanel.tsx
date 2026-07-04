@@ -16,6 +16,14 @@ const PANEL_MOTION_MS = 200;
 const PANEL_WIDTH = 280;
 const PANEL_MARGIN = 8;
 /**
+ * 左の操作列で絞り込みトグル／開いたパネルが占める共有の上端（px・ADR-0029 / スライス4c）。
+ * 左上原点だと開いたパネルが倍率表示（top8）・指標トグル（top40・高さ約32）を覆うため、
+ * その下＝指標トグル(top40+高さ)の下に置く。トグルボタン（{@link TOGGLE_WRAP_STYLE}）と
+ * パネル（{@link panelStyle}）の両方がこの1値を参照し、必ず同じ場所を占める（トグルが隠れて
+ * パネルが同じ位置に出る＝閉↔開で同じ場所が姿を変える一体感・ADR-0029）。
+ */
+const PANEL_TOP = 84;
+/**
  * 開閉トグルボタンの安定 id（非モーダル a11y のフォーカス復帰先・ADR-0029 規約例外）。
  * パネル（閉じる側）と FilterDrawerToggle（復帰先）が別コンポーネントなので、DOM の id で起点へ返す
  * （フォーカストラップは入れない＝非モーダル設計と矛盾するため・代わりに ESC で閉じ起点へフォーカスを戻す）。
@@ -237,7 +245,9 @@ function MetricFilterRow({
 // --- スタイル（意味/用途トークン参照・ADR-0027/DESIGN §4）。 ---
 
 // section＝位置取り（左端ドロワー・固定）＋開閉スライド。surface 面の見た目もここで持つ（小窓）。
-// 定位置は左端（left=PANEL_MARGIN, top=PANEL_MARGIN）。PC は移動しない＝offset は持たない（ADR-0029 改訂）。
+// 定位置は左端（left=PANEL_MARGIN, top=PANEL_TOP）。上端は指標トグルの下＝トグルボタンと同じ位置（PANEL_TOP を
+// 共有＝マジックナンバー二重管理を避ける・スライス4c）ゆえ開いても倍率表示/指標トグルを覆わない。
+// PC は移動しない＝offset は持たない（ADR-0029 改訂）。
 // 出（未表示）＝左へ逃がし透明に／入り＝定位置・不透明。遷移はトークン（--motion-base/-ease）。
 // prefers-reduced-motion 時は global.css が transition を実質0にし即時化する。
 function panelStyle(isVisible: boolean): CSSProperties {
@@ -246,10 +256,11 @@ function panelStyle(isVisible: boolean): CSSProperties {
   return {
     position: "absolute",
     left: PANEL_MARGIN,
-    top: PANEL_MARGIN,
+    top: PANEL_TOP,
     width: PANEL_WIDTH,
     maxWidth: "calc(100vw - 16px)",
-    maxHeight: "calc(100vh - 16px)",
+    // 上端を PANEL_TOP まで下げたぶん高さも詰める＝画面下にはみ出さない（PANEL_TOP + 下余白8）。
+    maxHeight: `calc(100vh - ${PANEL_TOP + PANEL_MARGIN}px)`,
     overflowY: "auto",
     padding: 12,
     display: "flex",
@@ -285,11 +296,12 @@ const TITLE_STYLE: CSSProperties = {
 };
 
 // トグル＝左の操作列のボタン。指標トグル（top40・高さ約32）の下に置き衝突を避ける（倍率 top8・指標 top40）。
-// 開くと隠れる（FilterDrawerToggle が null）＝パネルと重ならない。MetricToggle と同じ左端 left8 で操作列を縦に揃える。
+// 上端は PANEL_TOP を共有＝開いたパネル（panelStyle）と必ず同じ位置（トグルが隠れてパネルが同じ場所に出る一体感・
+// スライス4c）。開くと隠れる（FilterDrawerToggle が null）＝重ならない。MetricToggle と同じ左端 left8 で操作列を縦に揃える。
 const TOGGLE_WRAP_STYLE: CSSProperties = {
   position: "absolute",
   left: 8,
-  top: 84,
+  top: PANEL_TOP,
   zIndex: 1,
 };
 
