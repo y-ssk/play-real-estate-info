@@ -43,6 +43,15 @@ function formatPercentSigned(value: number): string {
   return `${sign}${pct.toLocaleString("ja-JP", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
 }
 
+/**
+ * パーセント整形（符号なし・小数1桁）。高齢化率（0.35→「35.0%」）に使う。
+ * 増減率と違い高齢化率は「量（比率の水準）」で常に非負ゆえ + 符号を付けない（{@link formatPercentSigned} と別関数）。
+ */
+function formatPercent(value: number): string {
+  const pct = value * 100;
+  return `${pct.toLocaleString("ja-JP", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
+}
+
 /** 面積整形（小数1桁・桁区切り）。 */
 function formatKm2(value: number): string {
   return value.toLocaleString("ja-JP", { maximumFractionDigits: 1 });
@@ -57,8 +66,10 @@ function formatYen(value: number): string {
  * 面塗り指標の registry（キー→定義）。新指標はここに1エントリ足す。
  *
  * - `area_km2`（②a・既存）：市区町村面積。量＝sequential（緑）。出典は N03 由来の算出。
- * - `pop_change_rate_2020_2050`（②c・本スライス）：将来人口増減率。符号付き＝diverging（0%中心）。
+ * - `pop_change_rate_2020_2050`（②c）：将来人口増減率。符号付き＝diverging（0%中心）。
  *   **推計値ゆえ出典に「推計(2020→2050)」を明示**（ADR-0009 断定しない）。
+ * - `aging_rate_2050`（②e・本スライス）：高齢化率（推計 2050）。非負の比率＝量＝sequential（緑）。
+ *   **推計値ゆえ出典に「推計(2050)」を明示**（ADR-0009）。市区町村ごとに ΣPTC/ΣPTN（人口重み付き比）。
  */
 export const METRICS: Record<string, MetricDef> = {
   area_km2: {
@@ -77,6 +88,19 @@ export const METRICS: Record<string, MetricDef> = {
     source: "出典：国土数値情報 将来推計人口250mメッシュ（XKT013）／推計（2020→2050）",
     format: formatPercentSigned,
   },
+  aging_rate_2050: {
+    key: "aging_rate_2050",
+    title: "高齢化率（推計 2050）",
+    unit: "",
+    // 量＝sequential（高齢化率は非負の比率＝多寡を濃淡で見せる。0起点でなくてよい・緑系ランプ）。
+    // 増減率のような符号付き（0中心で発散）ではないため diverging にしない。
+    scale: "sequential",
+    // 将来推計人口(XKT013)由来・推計2050 の高齢化率（65歳以上人口÷総数）。**推計ゆえ「推計」を明示**
+    // （ADR-0009 断定しない・ADR-0011 出典は法的要件）。算出は市区町村ごとに ΣPTC/ΣPTN（人口重み付き比）。
+    source:
+      "出典：国土数値情報 将来推計人口250mメッシュ（XKT013）／推計（2050）・65歳以上人口÷総数",
+    format: formatPercent,
+  },
   land_price_median: {
     key: "land_price_median",
     title: "公的地価の中央値（住宅地）",
@@ -94,6 +118,7 @@ export const METRICS: Record<string, MetricDef> = {
 export const METRIC_ORDER: readonly string[] = [
   "area_km2",
   "pop_change_rate_2020_2050",
+  "aging_rate_2050",
   "land_price_median",
 ];
 
