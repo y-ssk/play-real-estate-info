@@ -105,7 +105,9 @@ for PREF in "${PREFS[@]}"; do
       exit 1
     fi
     # 空タイル（浸水域が無い）は保存しても集計に無害だが、枚数が多くディスクを食うため features 空なら消す。
-    if grep -q '"features": *\[\] *}' "$out" || grep -q '"features":\[\]}' "$out"; then
+    # XKT026 は整形（複数行）JSON で features:[] が改行を跨ぐため、xpt002 の1行 grep では検出できない
+    # （検証で確認）。整形に依らず「Feature オブジェクトが1つも無い＝空」を判定する（"type": "Feature" の有無）。
+    if ! grep -q '"type": *"Feature"' "$out"; then
       rm -f "$out"
       empty=$((empty + 1))
     else
