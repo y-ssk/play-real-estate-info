@@ -4,6 +4,7 @@ import {
   CHOROPLETH_DIVERGING_RAMP,
   CHOROPLETH_FILL_OPACITY_EXPR,
   CHOROPLETH_FILL_RAMP,
+  CHOROPLETH_FILL_RAMP_BLUE,
   CHOROPLETH_FILL_RAMP_GREY,
   CHOROPLETH_FILL_RAMP_PURPLE,
   CHOROPLETH_HOVER_FILL_OPACITY_EXPR,
@@ -123,16 +124,18 @@ describe("choroplethFillLegend", () => {
 });
 
 describe("色相別 逐次ランプ（ADR-0032・色相体系）", () => {
-  it("紫・灰ランプは5段（薄→濃）で緑と別色相（識別のための色相分け）", () => {
+  it("紫・灰・青ランプは5段（薄→濃）で緑と別色相（識別のための色相分け）", () => {
     expect(CHOROPLETH_FILL_RAMP_PURPLE).toHaveLength(5);
     expect(CHOROPLETH_FILL_RAMP_GREY).toHaveLength(5);
-    // 3ランプは相互に別色（先頭の淡色が異なる＝色相で区別できる）。
+    expect(CHOROPLETH_FILL_RAMP_BLUE).toHaveLength(5);
+    // 4ランプは相互に別色（先頭の淡色が異なる＝色相で区別できる）。
     const heads = [
       CHOROPLETH_FILL_RAMP[0],
       CHOROPLETH_FILL_RAMP_PURPLE[0],
       CHOROPLETH_FILL_RAMP_GREY[0],
+      CHOROPLETH_FILL_RAMP_BLUE[0],
     ];
-    expect(new Set(heads).size).toBe(3);
+    expect(new Set(heads).size).toBe(4);
   });
 });
 

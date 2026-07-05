@@ -14,6 +14,7 @@
 
 import {
   CHOROPLETH_FILL_RAMP,
+  CHOROPLETH_FILL_RAMP_BLUE,
   CHOROPLETH_FILL_RAMP_GREY,
   CHOROPLETH_FILL_RAMP_PURPLE,
 } from "../../styles/mapTokens";
@@ -29,8 +30,9 @@ export type MetricScale = "sequential" | "diverging";
  * （`CHOROPLETH_FILL_RAMP`/`_PURPLE`/`_GREY`）に集約し、ここは「どの色相か」だけを持つ（生値を持たない・§4）。
  * **発散（diverging）は 0 中央の PRGn 固定ゆえ hue を持たない**（人口増減など符号付き専用）。
  * **将来 sequential 指標を足す人は必ず色相を選ぶ**＝体系から外れられない構造（`ADR-0032` 結論・実装）。
+ * 緑=相場／紫=将来(高齢化)／灰=基盤(面積)／青=浸水(洪水該当面積率＝水害の慣例色・`ADR-0032` 予約色)。
  */
-export type MetricHue = "green" | "purple" | "grey";
+export type MetricHue = "green" | "purple" | "grey" | "blue";
 
 /**
  * 1指標の表示定義の共通部分（値そのものは `/values` から取り、ここは「見せ方」だけを持つ）。
@@ -87,6 +89,16 @@ function formatPercent(value: number): string {
   return `${pct.toLocaleString("ja-JP", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
 }
 
+/**
+ * パーセント整形（既に % 値・符号なし・小数1桁）。洪水該当面積率（45.3→「45.3%」）に使う。
+ * 高齢化率（{@link formatPercent}）や増減率（{@link formatPercentSigned}）は 0〜1 の比率を持ち ×100 するが、
+ * 洪水該当面積率は集計 SQL の時点で 0〜100 の % 値を格納する（区に重なる浸水面積÷区面積×100・設計 note §3）。
+ * ゆえに **ここで ×100 しない**（二重に 100 倍しない＝100超の誤表示を避ける）。0% は該当なし（present）を表す。
+ */
+function formatPercentRaw(value: number): string {
+  return `${value.toLocaleString("ja-JP", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`;
+}
+
 /** 面積整形（小数1桁・桁区切り）。 */
 function formatKm2(value: number): string {
   return value.toLocaleString("ja-JP", { maximumFractionDigits: 1 });
@@ -106,8 +118,11 @@ function formatYen(value: number): string {
  * - `aging_rate_2050`（②e）：高齢化率（推計 2050）。非負の比率＝量＝sequential・色相=紫（将来・`ADR-0032`）。
  *   **推計値ゆえ出典に「推計(2050)」を明示**（ADR-0009）。市区町村ごとに ΣPTC/ΣPTN（人口重み付き比）。
  * - `land_price_median`（2d）：公的地価の中央値。量＝sequential・色相=緑（相場・`ADR-0032`）。
+ * - `flood_area_coverage_rate`（#74）：洪水浸水想定区域（想定最大規模）の該当面積率(%)。非負の面積率＝量＝
+ *   sequential・色相=青（浸水＝水害の慣例色・`ADR-0032` 予約色）。値は集計 SQL の時点で 0〜100 の % 値
+ *   （区に重なる浸水面積÷区面積×100）。出典に XKT026・「想定最大規模」を明示（ADR-0006/0011）。
  *
- * 色相（hue）は分野で色相を束ねる体系（緑=相場／紫=将来／灰=基盤・`ADR-0032`）。トグルで指標を切り替えても
+ * 色相（hue）は分野で色相を束ねる体系（緑=相場／紫=将来／灰=基盤／青=浸水・`ADR-0032`）。トグルで指標を切り替えても
  * 色相で分野が識別できる（かつての緑独占＝全逐次が緑で見分けづらかった懸念の解消）。**発散は hue を持たない**。
  */
 export const METRICS: Record<string, MetricDef> = {
@@ -156,6 +171,21 @@ export const METRICS: Record<string, MetricDef> = {
       "出典：国土交通省 不動産情報ライブラリ 地価公示・地価調査（XPT002）／住宅地・当年・中央値",
     format: formatYen,
   },
+  flood_area_coverage_rate: {
+    key: "flood_area_coverage_rate",
+    title: "洪水浸水想定区域の該当面積率",
+    unit: "%",
+    // 量＝sequential（非負の面積率＝0〜100% の多寡を濃淡で見せる。0起点でなくてよい）。
+    // 浸水分野＝青で束ねる（水害の慣例色・`ADR-0032` 予約色）。見え方は層4評価。
+    scale: "sequential",
+    hue: "blue",
+    // 洪水浸水想定区域（想定最大規模・XKT026）由来。区に重なる浸水面積÷区面積×100（交差面積按分・
+    // ADR-0006 該当面積率・ADR-0015）。「想定最大規模」で実績でなく想定であることを示す（ADR-0011 出典は法的要件）。
+    source:
+      "出典：国土数値情報 洪水浸水想定区域（想定最大規模）（XKT026）／区に重なる浸水面積÷区面積",
+    // 値は 0〜100 の % 値（集計 SQL で ×100 済み）ゆえ ×100 しない整形を使う（他の率指標と違う点・上の関数参照）。
+    format: formatPercentRaw,
+  },
 };
 
 /** 面塗りで切り替えられる指標キーの並び（トグルの表示順）。 */
@@ -164,6 +194,7 @@ export const METRIC_ORDER: readonly string[] = [
   "pop_change_rate_2020_2050",
   "aging_rate_2050",
   "land_price_median",
+  "flood_area_coverage_rate",
 ];
 
 /** 既定の表示指標（初期表示）。 */
@@ -179,6 +210,7 @@ export const HUE_RAMPS: Record<MetricHue, readonly string[]> = {
   green: CHOROPLETH_FILL_RAMP,
   purple: CHOROPLETH_FILL_RAMP_PURPLE,
   grey: CHOROPLETH_FILL_RAMP_GREY,
+  blue: CHOROPLETH_FILL_RAMP_BLUE,
 };
 
 /**

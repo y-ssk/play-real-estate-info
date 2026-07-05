@@ -1,5 +1,6 @@
 import {
   CHOROPLETH_FILL_RAMP,
+  CHOROPLETH_FILL_RAMP_BLUE,
   CHOROPLETH_FILL_RAMP_GREY,
   CHOROPLETH_FILL_RAMP_PURPLE,
 } from "../../styles/mapTokens";
@@ -40,17 +41,27 @@ describe("METRICS registry", () => {
     expect(def?.source).toContain("XPT002");
     expect(def?.source).toContain("住宅地");
   });
+
+  it("洪水該当面積率は sequential・単位%・出典に XKT026/想定最大規模が明記（ADR-0006/0011）", () => {
+    const def = METRICS.flood_area_coverage_rate;
+    expect(def?.scale).toBe("sequential");
+    expect(def?.unit).toBe("%");
+    expect(def?.source).toContain("XKT026");
+    expect(def?.source).toContain("想定最大規模");
+  });
 });
 
 describe("面塗り指標の色相体系（ADR-0032・分野で色相を束ねる）", () => {
-  it("逐次指標は分野色相を持つ：面積=灰・地価=緑・高齢化=紫（緑独占の解消）", () => {
+  it("逐次指標は分野色相を持つ：面積=灰・地価=緑・高齢化=紫・洪水=青（緑独占の解消）", () => {
     const area = METRICS.area_km2;
     const land = METRICS.land_price_median;
     const aging = METRICS.aging_rate_2050;
+    const flood = METRICS.flood_area_coverage_rate;
     // 判別ユニオンゆえ sequential のときだけ hue にアクセスできる（型で保証）。
     expect(area?.scale === "sequential" && area.hue).toBe("grey");
     expect(land?.scale === "sequential" && land.hue).toBe("green");
     expect(aging?.scale === "sequential" && aging.hue).toBe("purple");
+    expect(flood?.scale === "sequential" && flood.hue).toBe("blue");
   });
 
   it("発散指標（人口増減率）は色相を持たない（0中央 PRGn 固定）", () => {
@@ -63,7 +74,7 @@ describe("面塗り指標の色相体系（ADR-0032・分野で色相を束ね�
   it("全ての sequential 指標が色相を持つ＝体系から外れられない（新指標も型で強制）", () => {
     for (const def of Object.values(METRICS)) {
       if (def.scale === "sequential") {
-        expect(["green", "purple", "grey"]).toContain(def.hue);
+        expect(["green", "purple", "grey", "blue"]).toContain(def.hue);
       }
     }
   });
@@ -72,6 +83,7 @@ describe("面塗り指標の色相体系（ADR-0032・分野で色相を束ね�
     expect(sequentialFillRamp(METRICS.area_km2)).toEqual(CHOROPLETH_FILL_RAMP_GREY);
     expect(sequentialFillRamp(METRICS.land_price_median)).toEqual(CHOROPLETH_FILL_RAMP);
     expect(sequentialFillRamp(METRICS.aging_rate_2050)).toEqual(CHOROPLETH_FILL_RAMP_PURPLE);
+    expect(sequentialFillRamp(METRICS.flood_area_coverage_rate)).toEqual(CHOROPLETH_FILL_RAMP_BLUE);
     // 未知/未定義 metric は安全側で緑ランプ（後方互換）。
     expect(sequentialFillRamp(undefined)).toEqual(CHOROPLETH_FILL_RAMP);
   });
@@ -116,6 +128,19 @@ describe("高齢化率の整形（符号なし%・小数1桁）", () => {
   });
 
   it("0 は 0.0%（小数1桁固定）", () => {
+    expect(fmt?.(0)).toBe("0.0%");
+  });
+});
+
+describe("洪水該当面積率の整形（既に%値・×100しない・小数1桁）", () => {
+  const fmt = METRICS.flood_area_coverage_rate?.format;
+
+  it("0〜100 の % 値をそのまま % 表示する（高齢化率と違い ×100 しない＝集計 SQL で 100 倍済み）", () => {
+    expect(fmt?.(45.3)).toBe("45.3%");
+    expect(fmt?.(100)).toBe("100.0%");
+  });
+
+  it("0 は 0.0%（該当なし＝present の 0% を小数1桁で示す）", () => {
     expect(fmt?.(0)).toBe("0.0%");
   });
 });

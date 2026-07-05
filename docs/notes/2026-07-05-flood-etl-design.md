@@ -150,9 +150,68 @@ WHERE au.unit_kind = 'municipality'
 
 ---
 
-## 6.（実装後に埋める）コード対応
+## 6. コード対応（実装 PR で記入・設計とコードの一致確認）
 
-> 実装 PR で、実際の関数シグネチャ・SQL 全文・テスト名を §2/§4 の各行に紐づける（設計とコードの一致確認）。ここが「コードが設計どおりか」の最終チェック欄。
+> #74 実装（`feature/slice-flood-area-rate`）で、実際の関数シグネチャ・SQL 全文・テスト名を §2/§4 の各行に紐づけた。ここが「コードが設計どおりか」の最終チェック欄。
+
+### §2（モジュールと関数の責務）↔ 実装
+
+| 段 | 設計の関数（§2） | 実装（ファイル : シンボル） |
+|---|---|---|
+| 取得 | `scripts/fetch-xkt026.sh` | `scripts/fetch-xkt026.sh`（z=14・self-source・`PREFS_OVERRIDE` で pref 絞り込み可・空タイル削除・冪等） |
+| 取得補助 | `tilegrid.RangeFor` ＋ pref→bbox | `internal/tilegrid/area.go : XKT026TileZoom = 14`（`RangeFor(bbox, 14)` を fetch/`-tiles` が渡す・`PrefBBoxOverride`/`prefBBoxFromDB` は既存を再利用） |
+| 投入分岐 | `cmd/ingest/main.go` runMetric に `case` | `cmd/ingest/main.go : runMetric` の `case "flood_area_coverage_rate"`（year は `yearFromDataDir`） |
+| 集計本体 | `ComputeFloodAreaCoverage(ctx, dsn, dataDir string, year int) (FloodResult, error)` | `internal/ingest/metric_flood_coverage.go : ComputeFloodAreaCoverage`（→ `aggregateFloodDir` → `writeFloodCoverage`） |
+| パース | `aggregateFloodDir` ＋ 共用 `seekToFeaturesArray`/`skipValue` | `metric_flood_coverage.go : aggregateFloodDir` / `floodAccumulator.addTile` / `addFeature`（`seekToFeaturesArray`/`skipValue` は `metric_pop_change.go` から流用）。Polygon の geometry を GeoJSON 文字列で只取り（重複排除しない） |
+| 事後チェック | `assertFloodCoverage` | `metric_flood_coverage.go : assertFloodCoverage`（`assertLandPrice` と同型・TX 内） |
+| 表示 | `metrics.ts`（`hue:"blue"`）＋`mapTokens.ts`（Blues） | `web/src/features/choropleth/metrics.ts : flood_area_coverage_rate`（`scale:"sequential"`/`hue:"blue"`/`format: formatPercentRaw`）＋`web/src/styles/mapTokens.ts : CHOROPLETH_FILL_RAMP_BLUE`＋`HUE_RAMPS.blue` |
+
+**`FloodResult` 実装**：`Metric string / Inserted int / Present int / None int / PolygonsParsed int / MinRate float64 / MaxRate float64`（設計どおり。`PolygonsParsed`＝一時テーブルへ載せた浸水ポリゴン生数）。
+
+### §3 集計 SQL（実装全文・`writeFloodCoverage` 内）
+
+一時テーブル（永続 `flood_polygon` は作らない＝塗り絵は別スライス）：
+```sql
+CREATE TEMP TABLE flood_poly ( geom geometry(Polygon, 6668) NOT NULL ) ON COMMIT DROP;
+-- COPY は式を通さないため flood_raw(gj text) へ GeoJSON 文字列を COPY し、下で geom を組む：
+INSERT INTO flood_poly (geom)
+SELECT ST_SetSRID(ST_MakeValid(ST_GeomFromGeoJSON(gj)), 6668) FROM flood_raw;   -- R4：SRID 6668 を明示付与
+CREATE INDEX ON flood_poly USING gist (geom);  ANALYZE flood_poly;              -- R1：交差を GiST で絞る
+```
+本体（設計 §3 と同一）：
+```sql
+DELETE FROM metric_value WHERE metric = $1;   -- R5：冪等
+
+INSERT INTO metric_value (unit_id, unit_kind, metric, value, status, year, source)
+SELECT au.code, au.unit_kind, $1,
+       COALESCE(cov.rate, 0),   -- R2：交差なし → 0%
+       'present',               -- R2：対象エリアは常に present（0 を含む）
+       $2, $3
+FROM admin_unit au
+LEFT JOIN LATERAL (
+    SELECT ST_Area( ST_Union( ST_Intersection(f.geom, au.geom) )::geography )   -- R1：結合してから面積
+           / NULLIF(ST_Area(au.geom::geography), 0) * 100 AS rate               -- ÷区面積×100＝%（0..100）
+    FROM flood_poly f
+    WHERE ST_Intersects(f.geom, au.geom)
+) cov ON true
+WHERE au.unit_kind = 'municipality'
+  AND left(au.code, 2) = ANY($4)   -- R6：1都3県（floodPrefixes = {11,12,13,14}）
+  AND au.geom IS NOT NULL;
+```
+引数：`$1=floodMetricKey`（`flood_area_coverage_rate`）／`$2=year`（版年）／`$3=floodSource`（XKT026・想定最大規模の出典）／`$4=floodPrefixes`。
+
+### §4 要件 ↔ テスト（実装したテスト名）
+
+| 要件 | テスト（層1） |
+|---|---|
+| R1 面積率が正確・0〜100 | `assertFloodCoverage`：全行 `0 ≤ value ≤ 100+ε`（100超は ST_Union 結合漏れで error）。集計 SQL の `ST_Union(ST_Intersection)`＋`::geography`＋区面積割り×100 |
+| R2 該当なし(0%)とデータなし(none) | `assertFloodCoverage`：present>0・status/value 整合。SQL の `COALESCE(...,0)`＋`present`（`land_price` の none を持ち込まない） |
+| R3 出典保持 | `assertFloodCoverage`：source 非空（空 source が0件）。FE `metrics.test.ts`：出典に `XKT026`・`想定最大規模` |
+| R4 座標系6668一貫 | 一時テーブルを `geometry(Polygon, 6668)`＋`ST_SetSRID(...,6668)` で組む（admin_unit も6668） |
+| R5 冪等 | SQL の `DELETE→INSERT`／TEMP は `ON COMMIT DROP` |
+| R6 1都3県 | `assertFloodCoverage`：pref 上2桁が `floodPrefixes` 以外0件。SQL の `left(au.code,2)=ANY($4)` |
+| パース（Polygon 只取り・重複は SQL へ） | `TestFloodAddTile_KeepsPolygon` / `_RejectsNonPolygon` / `_RejectsMissingCoords` / `_AcrossTiles` / `_RejectsNonFeatureCollection`（`internal/ingest/metric_flood_coverage_test.go`） |
+| 表示（青ランプ・%整形） | `web/.../metrics.test.ts`（sequential/hue=blue/unit=%/×100しない整形）・`mapTokens.test.ts`（Blues 5段・4ランプ相互別色） |
 
 ---
 
