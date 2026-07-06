@@ -174,7 +174,9 @@ export const METRICS: Record<string, MetricDef> = {
   flood_area_coverage_rate: {
     key: "flood_area_coverage_rate",
     title: "洪水浸水想定区域の該当面積率",
-    unit: "%",
+    // 率指標は unit を空にし % は format 側で付ける（aging_rate_2050・pop_change_rate_2020_2050 と同流儀）。
+    // unit も "%" にすると凡例・パネルが「45.0% %」と二重表示になる（層4オーナー指摘の是正）。
+    unit: "",
     // 量＝sequential（非負の面積率＝0〜100% の多寡を濃淡で見せる。0起点でなくてよい）。
     // 浸水分野＝青で束ねる（水害の慣例色・`ADR-0032` 予約色）。見え方は層4評価。
     scale: "sequential",

@@ -42,10 +42,12 @@ describe("METRICS registry", () => {
     expect(def?.source).toContain("住宅地");
   });
 
-  it("洪水該当面積率は sequential・単位%・出典に XKT026/想定最大規模が明記（ADR-0006/0011）", () => {
+  it("洪水該当面積率は sequential・unit は空（%は format 側・二重表示回避）・出典に XKT026/想定最大規模（ADR-0006/0011）", () => {
     const def = METRICS.flood_area_coverage_rate;
     expect(def?.scale).toBe("sequential");
-    expect(def?.unit).toBe("%");
+    // 率指標は unit を空にし % は format 側で付ける（凡例・パネルの「% %」二重表示を避ける・層4是正）。
+    expect(def?.unit).toBe("");
+    expect(def?.format(45)).toBe("45.0%");
     expect(def?.source).toContain("XKT026");
     expect(def?.source).toContain("想定最大規模");
   });

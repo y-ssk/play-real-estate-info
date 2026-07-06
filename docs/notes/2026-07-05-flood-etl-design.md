@@ -211,7 +211,7 @@ WHERE au.unit_kind = 'municipality'
 | R5 冪等 | SQL の `DELETE→INSERT`／TEMP は `ON COMMIT DROP` |
 | R6 1都3県 | `assertFloodCoverage`：pref 上2桁が `floodPrefixes` 以外0件。SQL の `left(au.code,2)=ANY($4)` |
 | パース（Polygon 只取り・重複は SQL へ） | `TestParseFloodTile_KeepsPolygon` / `_RejectsNonPolygon` / `_RejectsMissingCoords` / `_MultiFeatures` / `_RejectsNonFeatureCollection`（`internal/ingest/metric_flood_coverage_test.go`） |
-| 表示（青ランプ・%整形） | `web/.../metrics.test.ts`（sequential/hue=blue/unit=%/×100しない整形）・`mapTokens.test.ts`（Blues 5段・4ランプ相互別色） |
+| 表示（青ランプ・%整形） | `web/.../metrics.test.ts`（sequential/hue=blue/unit=""＝%は format 側で付け二重表示回避/×100しない整形）・`mapTokens.test.ts`（Blues 5段・4ランプ相互別色） |
 
 ### 実装で足した堅牢化（設計 §3 の SQL 意味は不変・東京の実データ規模で判明した3点）
 
