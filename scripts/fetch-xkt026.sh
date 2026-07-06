@@ -74,9 +74,13 @@ fi
 CURL_CFG="$(mktemp)"
 {
   printf 'header = "Ocp-Apim-Subscription-Key: %s"\n' "$MLIT_API_KEY"
-  printf 'fail\n'     # HTTP エラー(404等)を非ゼロ終了に（-f 相当）
-  printf 'location\n' # リダイレクト追従（-L 相当）
-  printf 'retry = 3\n'
+  printf 'fail\n'         # HTTP エラー(404等)を非ゼロ終了に（-f 相当）
+  printf 'location\n'     # リダイレクト追従（-L 相当）
+  printf 'http1.1\n'      # HTTP/1.1 を強制：サーバの HTTP/2 実装が長時間スイープで
+                          # "HTTP/2 stream not closed cleanly: PROTOCOL_ERROR" を出す（実測・約6960枚の途中で頻発）。
+  printf 'retry = 5\n'    # 一時失敗の再試行（レート制限・切断）。
+  printf 'retry-all-errors\n' # PROTOCOL_ERROR 等 HTTP 以外の転送エラーも再試行対象に含める。
+  printf 'retry-delay = 2\n'  # 再試行間隔（秒）。
 } > "$CURL_CFG"
 
 echo "fetch-xkt026: YEAR=${YEAR} PREFS=${PREFS[*]} z=${Z}"
