@@ -161,8 +161,8 @@ WHERE au.unit_kind = 'municipality'
 | 取得 | `scripts/fetch-xkt026.sh` | `scripts/fetch-xkt026.sh`（z=14・self-source・`PREFS_OVERRIDE` で pref 絞り込み可・空タイル削除・冪等） |
 | 取得補助 | `tilegrid.RangeFor` ＋ pref→bbox | `internal/tilegrid/area.go : XKT026TileZoom = 14`（`RangeFor(bbox, 14)` を fetch/`-tiles` が渡す・`PrefBBoxOverride`/`prefBBoxFromDB` は既存を再利用） |
 | 投入分岐 | `cmd/ingest/main.go` runMetric に `case` | `cmd/ingest/main.go : runMetric` の `case "flood_area_coverage_rate"`（year は `yearFromDataDir`） |
-| 集計本体 | `ComputeFloodAreaCoverage(ctx, dsn, dataDir string, year int) (FloodResult, error)` | `internal/ingest/metric_flood_coverage.go : ComputeFloodAreaCoverage`（→ `aggregateFloodDir` → `writeFloodCoverage`） |
-| パース | `aggregateFloodDir` ＋ 共用 `seekToFeaturesArray`/`skipValue` | `metric_flood_coverage.go : aggregateFloodDir` / `floodAccumulator.addTile` / `addFeature`（`seekToFeaturesArray`/`skipValue` は `metric_pop_change.go` から流用）。Polygon の geometry を GeoJSON 文字列で只取り（重複排除しない） |
+| 集計本体 | `ComputeFloodAreaCoverage(ctx, dsn, dataDir string, year int) (FloodResult, error)` | `internal/ingest/metric_flood_coverage.go : ComputeFloodAreaCoverage`（→ `floodTileFiles` でファイル列挙 → `writeFloodCoverage` が1枚ずつ COPY） |
+| パース | `aggregateFloodDir` ＋ 共用 `seekToFeaturesArray`/`skipValue` | `metric_flood_coverage.go : parseFloodTile`（1タイル分の Polygon を返す純関数）／`parseFloodFile`（開いて渡す）。`seekToFeaturesArray`/`skipValue` は `metric_pop_change.go` から流用。Polygon の geometry を GeoJSON 文字列で只取り（重複排除しない）。**全ポリゴンを溜めず1ファイルずつ即 COPY**（メモリ対策・下「実装で足した堅牢化」参照） |
 | 事後チェック | `assertFloodCoverage` | `metric_flood_coverage.go : assertFloodCoverage`（`assertLandPrice` と同型・TX 内） |
 | 表示 | `metrics.ts`（`hue:"blue"`）＋`mapTokens.ts`（Blues） | `web/src/features/choropleth/metrics.ts : flood_area_coverage_rate`（`scale:"sequential"`/`hue:"blue"`/`format: formatPercentRaw`）＋`web/src/styles/mapTokens.ts : CHOROPLETH_FILL_RAMP_BLUE`＋`HUE_RAMPS.blue` |
 
@@ -189,7 +189,7 @@ SELECT au.code, au.unit_kind, $1,
        $2, $3
 FROM admin_unit au
 LEFT JOIN LATERAL (
-    SELECT ST_Area( ST_Union( ST_Intersection(f.geom, au.geom) )::geography )   -- R1：結合してから面積
+    SELECT ST_Area( ST_Union( ST_Intersection(f.geom, au.geom, 1e-9), 1e-9 )::geography )  -- R1：結合してから面積（gridSize=堅牢化）
            / NULLIF(ST_Area(au.geom::geography), 0) * 100 AS rate               -- ÷区面積×100＝%（0..100）
     FROM flood_poly f
     WHERE ST_Intersects(f.geom, au.geom)
@@ -198,7 +198,7 @@ WHERE au.unit_kind = 'municipality'
   AND left(au.code, 2) = ANY($4)   -- R6：1都3県（floodPrefixes = {11,12,13,14}）
   AND au.geom IS NOT NULL;
 ```
-引数：`$1=floodMetricKey`（`flood_area_coverage_rate`）／`$2=year`（版年）／`$3=floodSource`（XKT026・想定最大規模の出典）／`$4=floodPrefixes`。
+引数：`$1=floodMetricKey`（`flood_area_coverage_rate`）／`$2=year`（版年）／`$3=floodSource`（XKT026・想定最大規模の出典）／`$4=floodPrefixes`。`ST_Union`/`ST_Intersection` の第3引数 `gridSize=1e-9` は設計 §3 に無い**堅牢化の追加**（下記）。
 
 ### §4 要件 ↔ テスト（実装したテスト名）
 
@@ -210,8 +210,16 @@ WHERE au.unit_kind = 'municipality'
 | R4 座標系6668一貫 | 一時テーブルを `geometry(Polygon, 6668)`＋`ST_SetSRID(...,6668)` で組む（admin_unit も6668） |
 | R5 冪等 | SQL の `DELETE→INSERT`／TEMP は `ON COMMIT DROP` |
 | R6 1都3県 | `assertFloodCoverage`：pref 上2桁が `floodPrefixes` 以外0件。SQL の `left(au.code,2)=ANY($4)` |
-| パース（Polygon 只取り・重複は SQL へ） | `TestFloodAddTile_KeepsPolygon` / `_RejectsNonPolygon` / `_RejectsMissingCoords` / `_AcrossTiles` / `_RejectsNonFeatureCollection`（`internal/ingest/metric_flood_coverage_test.go`） |
+| パース（Polygon 只取り・重複は SQL へ） | `TestParseFloodTile_KeepsPolygon` / `_RejectsNonPolygon` / `_RejectsMissingCoords` / `_MultiFeatures` / `_RejectsNonFeatureCollection`（`internal/ingest/metric_flood_coverage_test.go`） |
 | 表示（青ランプ・%整形） | `web/.../metrics.test.ts`（sequential/hue=blue/unit=%/×100しない整形）・`mapTokens.test.ts`（Blues 5段・4ランプ相互別色） |
+
+### 実装で足した堅牢化（設計 §3 の SQL 意味は不変・東京の実データ規模で判明した3点）
+
+> 設計 §3 の集計 SQL の**意味（該当面積率＝結合してから面積÷区面積×100・R1〜R6）は変えていない**。東京の実データ（浸水ポリゴン **約74.7万件**）で走らせて判明した3つの運用上の壁を、意味を保ったまま塞いだ。値は堅牢化の有無で **7桁一致**（東京69区 min 0.00 / max 78.76 / avg 18.54・>100 は0件＝R1 健全）。
+
+1. **メモリ**：全ポリゴンを Go の蓄積器に溜める素朴な実装だと東京だけで RSS ~2.3GB（1都3県＝4倍でホスト 7.6GB を食い潰す）。→ **1ファイルずつ読み、そのタイル分だけ即 COPY して解放**（`parseFloodTile`＋逐次 COPY）。実測 RSS ~160MB に低下。値は不変（COPY 先の `flood_poly` の中身は同じ）。
+2. **時間（timeout）**：区ごとの `ST_Union` は重く、東京69区で ~6.5 分。`cmd/ingest` の 5 分上限を超えて失敗した。→ **上限を 30 分へ**（他指標は数秒ゆえ無害な余裕）。集計 SQL は不変。
+3. **GEOS の堅牢性**：GEOS 3.9 は多数の複雑ポリゴン union で `TopologyException: Ring edge missing` を**非決定的**に投げる（同じ入力で通ったり落ちたり）。→ `ST_Union`/`ST_Intersection` に **`gridSize=1e-9`**（精度モデル overlay＝OverlayNG）を与え決定的・堅牢に。1e-9度は座標分解能よりはるかに細かく値は不変。時間コストは +13%（6.5 分）。GEOS 3.12+ では不要になりうる。
 
 ---
 

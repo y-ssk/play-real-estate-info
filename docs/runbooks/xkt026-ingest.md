@@ -60,6 +60,11 @@ go run ./cmd/ingest -metric=flood_area_coverage_rate -data=data/xkt026/2024
 - `year`（版年）は `-data` 末尾（`data/xkt026/<year>`）から取る（取得物と投入年を食い違わせない）。
 - **冪等**：`metric='flood_area_coverage_rate'` を DELETE→INSERT（何度流しても同結果）。TEMP は ON COMMIT DROP。
 - **永続テーブルは作らない**（塗り絵＝生ポリゴンレイヤーは別スライス。本スライスは集計＝面積率のみ・一時テーブル）。
+- **重い**：浸水ポリゴンは東京だけで約74.7万件。1タイルずつ COPY（メモリ ~160MB）→ 区ごとに
+  `ST_Union(ST_Intersection(...))` の交差面積按分。東京は投入込みで **約10分**（うち集計 ~6.5分）、
+  1都3県は数十分。`cmd/ingest` の締め切りは **30分**（他指標は数秒ゆえ無害）。途中失敗は冪等ゆえ流し直せる。
+- **GEOS 堅牢化**：`ST_Union`/`ST_Intersection` に `gridSize=1e-9` を与える（GEOS 3.9 の非決定的な
+  `TopologyException: Ring edge missing` を精度モデル overlay で回避。値は不変・設計note §6「実装で足した堅牢化」）。
 - **実行後アサート**（層1・失敗はロールバック）：投入>0／present>0／対象 pref 以外の混入0／status↔value 整合／
   source 非空／**全行 0≤value≤100**（100超は ST_Union 結合漏れ＝分割ポリゴンの二重計上・R1 破綻）。
 

@@ -49,19 +49,6 @@ type floodPolygon struct {
 	geoJSON string
 }
 
-// floodAccumulator はタイルをまたいで浸水ポリゴンを集める蓄積器（只取り・重複排除しない）。
-//
-// なぜ重複排除しないか：タイル分割・境界重複は SQL の ST_Union(ST_Intersection(...)) で溶かす設計
-// （設計 note §4・R1）。ここで点のような一意キーでの排除はできず（浸水域に安定 ID が無い＝_id は未文書・
-// IF §3 注記）、パース段での排除は不要。全ポリゴンを一時テーブルへ載せ、結合は PostGIS 側に一元化する。
-type floodAccumulator struct {
-	polygons []floodPolygon
-}
-
-func newFloodAccumulator() *floodAccumulator {
-	return &floodAccumulator{}
-}
-
 // floodFeatureGeom は1 Feature から geometry だけを只取りするための部分構造体。
 //
 // geometry の type と生 JSON（RawMessage）を受け、Polygon（IF §3：XKT026 は Polygon）だけ採用する。
@@ -74,41 +61,43 @@ type floodFeatureGeom struct {
 	} `json:"geometry"`
 }
 
-// addTile は GeoJSON タイル1枚をストリームで読み、Polygon の geometry を蓄積器へ足す。
+// parseFloodTile は GeoJSON タイル1枚をストリームで読み、Polygon の geometry を1枚分だけ返す（純関数・層1の核）。
 //
 // seekToFeaturesArray で features 配列の開始まで降り（metric_pop_change から流用）、各 Feature を
 // 部分構造体で復号して geometry の type/coordinates だけ取り出す。type!="Polygon" は捨てる（IF は
 // Polygon だが防御）。coordinates 欠落も捨てる。採用分は `{"type":"Polygon","coordinates":...}` の
-// GeoJSON 文字列に組み直して保持する（SRID は DB 側で 6668 を付与・§4）。
-func (a *floodAccumulator) addTile(r io.Reader) error {
+// GeoJSON 文字列に組み直して返す（SRID は DB 側で 6668 を付与・§4）。
+//
+// なぜ「1枚分だけ返す」設計か（全ポリゴンを蓄積器に溜めない）：Tokyo だけで浸水ポリゴンは約74万件・
+// GeoJSON 文字列で数 GB になり、全件をメモリへ溜めると 1都3県（4倍）でホストのメモリを食い潰す
+// （実測：Tokyo 全載せで ~2.3GB）。よって呼び出し側（ComputeFloodAreaCoverage）が1ファイルずつ読み、
+// 得たポリゴンを即 COPY で一時テーブルへ流して解放する＝メモリは常に1タイル分（~5MB）に収まる。
+// 重複排除はしない：タイル分割・境界重複は SQL の ST_Union(ST_Intersection(...)) で溶かす（設計 note §4・R1）。
+func parseFloodTile(r io.Reader) ([]floodPolygon, error) {
 	dec := json.NewDecoder(r)
 	if err := seekToFeaturesArray(dec); err != nil {
-		return err
+		return nil, err
 	}
+	var polys []floodPolygon
 	for dec.More() {
 		var f floodFeatureGeom
 		if err := dec.Decode(&f); err != nil {
-			return fmt.Errorf("Feature の復号に失敗: %w", err)
+			return nil, fmt.Errorf("Feature の復号に失敗: %w", err)
 		}
-		a.addFeature(f)
+		if f.Geometry.Type != "Polygon" {
+			// XKT026 は Polygon（IF §3）。MultiPolygon 等が来たら想定外ゆえ採らない（取り違え検出の防御）。
+			continue
+		}
+		if len(f.Geometry.Coordinates) == 0 {
+			continue // 座標欠落は面を成さず捨てる。
+		}
+		// geometry を GeoJSON 文字列に組み直す（ST_GeomFromGeoJSON が解釈する形）。coordinates は生 JSON を
+		// そのまま埋める＝座標を Go でパースし直さない（誤りの温床を避ける）。
+		polys = append(polys, floodPolygon{
+			geoJSON: `{"type":"Polygon","coordinates":` + string(f.Geometry.Coordinates) + `}`,
+		})
 	}
-	return nil
-}
-
-// addFeature は1 Feature の geometry を Polygon に限って採用する（純ロジック・層1の核）。
-func (a *floodAccumulator) addFeature(f floodFeatureGeom) {
-	if f.Geometry.Type != "Polygon" {
-		// XKT026 は Polygon（IF §3）。MultiPolygon 等が来たら想定外ゆえ採らない（取り違え検出の防御）。
-		return
-	}
-	if len(f.Geometry.Coordinates) == 0 {
-		return // 座標欠落は面を成さず捨てる。
-	}
-	// geometry を GeoJSON 文字列に組み直す（ST_GeomFromGeoJSON が解釈する形）。coordinates は生 JSON を
-	// そのまま埋める＝座標を Go でパースし直さない（誤りの温床を避ける）。
-	a.polygons = append(a.polygons, floodPolygon{
-		geoJSON: `{"type":"Polygon","coordinates":` + string(f.Geometry.Coordinates) + `}`,
-	})
+	return polys, nil
 }
 
 // ComputeFloodAreaCoverage は data/xkt026/<year> 配下のタイル群を集計し、洪水浸水想定区域の該当面積率(%)を
@@ -132,7 +121,7 @@ func ComputeFloodAreaCoverage(ctx context.Context, dsn, dataDir string, year int
 		// XKT026 の版年（例 2024）。取り違え（0・桁違い）を早期に弾く。
 		return FloodResult{}, fmt.Errorf("year が不正（%d）。XKT026 の版年（例 2024）を指定する", year)
 	}
-	acc, err := aggregateFloodDir(dataDir)
+	files, err := floodTileFiles(dataDir)
 	if err != nil {
 		return FloodResult{}, err
 	}
@@ -150,7 +139,7 @@ func ComputeFloodAreaCoverage(ctx context.Context, dsn, dataDir string, year int
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // commit 済みなら no-op
 
-	res, err := writeFloodCoverage(ctx, tx, acc, year)
+	res, err := writeFloodCoverage(ctx, tx, files, year)
 	if err != nil {
 		return FloodResult{}, err
 	}
@@ -161,12 +150,12 @@ func ComputeFloodAreaCoverage(ctx context.Context, dsn, dataDir string, year int
 	return res, nil
 }
 
-// aggregateFloodDir は dataDir 配下（サブディレクトリ含む）の *.geojson を1枚ずつストリーム集計する。
+// floodTileFiles は dataDir 配下（サブディレクトリ含む）の *.geojson を昇順で列挙する。
 //
-// 配置規約 data/xkt026/<year>/<pref>/z14_x_y.geojson ゆえ再帰的に集める（pref をまたいで全ポリゴンを1蓄積器へ）。
-// 交差 SQL で区（したがって pref）を判定するため、ここでは pref を区別せず全ポリゴンを載せる（県外はみ出しの
-// 浸水域は区と交差せず自然に落ちる）。1枚ずつ開いて閉じる＝開くハンドルを溜めない（land_price と同流儀）。
-func aggregateFloodDir(dataDir string) (*floodAccumulator, error) {
+// 配置規約 data/xkt026/<year>/<pref>/z14_x_y.geojson ゆえ再帰的に集める（pref をまたいで全タイルを対象へ）。
+// 交差 SQL で区（したがって pref）を判定するため、ここでは pref を区別しない（県外はみ出しの浸水域は区と
+// 交差せず自然に落ちる）。実体の読み込み・COPY は writeFloodCoverage が1枚ずつ行う（メモリを溜めない）。
+func floodTileFiles(dataDir string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(dataDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -184,27 +173,21 @@ func aggregateFloodDir(dataDir string) (*floodAccumulator, error) {
 		return nil, fmt.Errorf("タイルが無い（%s 配下）。先に scripts/fetch-xkt026.sh で取得する", dataDir)
 	}
 	sort.Strings(files) // 決定的な処理順（ログの再現性）。
-
-	acc := newFloodAccumulator()
-	for _, path := range files {
-		if err := addFloodFile(acc, path); err != nil {
-			return nil, err
-		}
-	}
-	return acc, nil
+	return files, nil
 }
 
-// addFloodFile は1ファイルを開いて addTile に渡し、必ず閉じる（ハンドルを溜めない）。
-func addFloodFile(acc *floodAccumulator, path string) error {
+// parseFloodFile は1ファイルを開いて parseFloodTile に渡し、必ず閉じる（ハンドルを溜めない）。
+func parseFloodFile(path string) ([]floodPolygon, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("タイルを開けない（%s）: %w", path, err)
+		return nil, fmt.Errorf("タイルを開けない（%s）: %w", path, err)
 	}
 	defer f.Close()
-	if err := acc.addTile(f); err != nil {
-		return fmt.Errorf("タイルの集計に失敗（%s）: %w", path, err)
+	polys, err := parseFloodTile(f)
+	if err != nil {
+		return nil, fmt.Errorf("タイルの解析に失敗（%s）: %w", path, err)
 	}
-	return nil
+	return polys, nil
 }
 
 // writeFloodCoverage は浸水ポリゴンを一時テーブルへ載せ、交差面積按分で該当面積率を算出し metric_value へ
@@ -214,7 +197,11 @@ func addFloodFile(acc *floodAccumulator, path string) error {
 // GiST 索引を張る。(3) admin_unit(対象1都3県・municipality)を母集合に LEFT JOIN LATERAL で区ごとに
 // ST_Union(ST_Intersection(...))::geography の面積÷区面積×100＝率を出し、交差ゼロは COALESCE(...,0)で
 // value=0・status='present'（R2）。永続テーブルは作らない（塗り絵は別スライス・範囲外）。
-func writeFloodCoverage(ctx context.Context, tx pgx.Tx, acc *floodAccumulator, year int) (FloodResult, error) {
+//
+// メモリ設計：タイルは1枚ずつ読み（parseFloodTile）、そのファイル分のポリゴンだけを COPY で flood_raw へ
+// 流して即解放する＝全ポリゴン（Tokyo で ~74万件・数 GB）を同時にメモリへ載せない（1都3県でホストの
+// メモリを食い潰す事故の回避・実測 Tokyo 全載せ ~2.3GB）。COPY 後に一括で geom を組み索引を張る。
+func writeFloodCoverage(ctx context.Context, tx pgx.Tx, files []string, year int) (FloodResult, error) {
 	// 冪等：当該 metric の既存行を消してから入れ直す。
 	if _, err := tx.Exec(ctx, `DELETE FROM metric_value WHERE metric = $1`, floodMetricKey); err != nil {
 		return FloodResult{}, fmt.Errorf("既存 metric_value(metric=%s) の削除に失敗: %w", floodMetricKey, err)
@@ -238,19 +225,38 @@ CREATE TEMP TABLE flood_raw (
 ) ON COMMIT DROP`); err != nil {
 		return FloodResult{}, fmt.Errorf("一時テーブル flood_raw の作成に失敗: %w", err)
 	}
-	rows := make([][]any, 0, len(acc.polygons))
-	for _, p := range acc.polygons {
-		rows = append(rows, []any{p.geoJSON})
+
+	// タイルを1枚ずつ読み、そのファイル分のポリゴンだけを COPY で流して解放する（メモリを溜めない・上のコメント）。
+	copied := 0
+	for _, path := range files {
+		polys, err := parseFloodFile(path)
+		if err != nil {
+			return FloodResult{}, err
+		}
+		if len(polys) == 0 {
+			continue // 空タイル（浸水域なし）は COPY しない。
+		}
+		rows := make([][]any, 0, len(polys))
+		for _, p := range polys {
+			rows = append(rows, []any{p.geoJSON})
+		}
+		if _, err := tx.CopyFrom(ctx,
+			pgx.Identifier{"flood_raw"},
+			[]string{"gj"},
+			pgx.CopyFromRows(rows),
+		); err != nil {
+			return FloodResult{}, fmt.Errorf("浸水ポリゴンの COPY 投入に失敗（%s）: %w", path, err)
+		}
+		copied += len(polys)
 	}
-	if _, err := tx.CopyFrom(ctx,
-		pgx.Identifier{"flood_raw"},
-		[]string{"gj"},
-		pgx.CopyFromRows(rows),
-	); err != nil {
-		return FloodResult{}, fmt.Errorf("浸水ポリゴンの COPY 投入に失敗: %w", err)
+	if copied == 0 {
+		return FloodResult{}, fmt.Errorf("浸水ポリゴンが0件（%d タイル全てが空）。取得タイルを確認", len(files))
 	}
+
 	// GeoJSON→geom（SRID 6668 明示付与）。ST_MakeValid で自己交差など不正リングを整える（交差・面積計算が
-	// 不正ジオメトリで落ちるのを防ぐ＝XKT026 は分割・複雑ポリゴンあり・IF §1 注記）。
+	// 不正ジオメトリで落ちるのを防ぐ＝XKT026 は分割・複雑ポリゴンあり・IF §1 注記）。ST_MakeValid が
+	// GeometryCollection/MultiPolygon を返す入力は Polygon 列に入らず落ちうるが、XKT026 は Polygon 前提ゆえ
+	// 通常は単純ポリゴンへ整う（想定外形状はここでエラーになり気づける）。
 	tag, err := tx.Exec(ctx, `
 INSERT INTO flood_poly (geom)
 SELECT ST_SetSRID(ST_MakeValid(ST_GeomFromGeoJSON(gj)), 6668)
@@ -274,6 +280,13 @@ FROM flood_raw`)
 	//   R2：COALESCE(cov.rate,0) かつ status='present'＝交差ゼロの区は 0%（present）。取得対象エリアは常に
 	//       present（land_price の「点なし→none」とは意味が違う＝浸水想定が無い＝事実の0%）。
 	//   R6：left(au.code,2)=ANY($4)＝1都3県。
+	//
+	// gridSize（第3引数 1e-9 度≒0.1mm）を ST_Intersection / ST_Union に与える理由（設計 note §3 の SQL への
+	// 追記＝ロバスト化）：GEOS 3.9（本環境）は多数の複雑ポリゴンの union で "TopologyException: Ring edge
+	// missing" を非決定的に投げることがある（実測：同じ入力でも実行ごとに落ちたり通ったり）。gridSize を
+	// 与えると GEOS の精度モデル overlay（OverlayNG）が働き、座標を極小グリッドへ丸めて ring 端を揃える＝
+	// 頑健かつ決定的になる。1e-9 度は XKT026 の座標分解能よりはるかに細かく、該当面積率の値は不変（実測で
+	// grid 有無が 7 桁一致）。GEOS 3.12+ なら不要になりうるが、現行環境の堅牢化として明示的に与える。
 	const insertSQL = `
 INSERT INTO metric_value (unit_id, unit_kind, metric, value, status, year, source)
 SELECT au.code,
@@ -285,7 +298,7 @@ SELECT au.code,
        $3
 FROM admin_unit au
 LEFT JOIN LATERAL (
-    SELECT ST_Area( ST_Union( ST_Intersection(f.geom, au.geom) )::geography )
+    SELECT ST_Area( ST_Union( ST_Intersection(f.geom, au.geom, 0.000000001), 0.000000001 )::geography )
            / NULLIF(ST_Area(au.geom::geography), 0) * 100 AS rate
     FROM flood_poly f
     WHERE ST_Intersects(f.geom, au.geom)
