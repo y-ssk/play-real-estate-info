@@ -74,12 +74,13 @@ func runMetric(metric, dataDir string) error {
 	}
 
 	// 算出/集計は多くの指標で数秒〜数分だが、止まったら気づけるよう上限を置く（Ctrl-C でも中断可）。
-	// 上限は 30 分：洪水(flood_area_coverage_rate)は交差面積按分の ST_Union が重く、1都3県で数十万〜
-	// 百万のポリゴンを区ごとに結合するため東京だけで ~5〜6 分・1都3県で 20 分超になりうる（実測・GEOS 3.9）。
-	// 他指標（面積/人口/地価）は数秒で終わるため、この余裕のある上限は無害（早く終わる指標を妨げない）。
+	// 上限は 60 分：洪水(flood_area_coverage_rate)は交差面積按分の ST_Union が重く、1都3県で数十万〜
+	// 百万のポリゴンを区ごとに結合するため、COPY(~15分)＋区ごと ST_Union の INSERT で 30 分を超える
+	// （実測・GEOS 3.9・当初の 30 分上限は INSERT 途中で context deadline exceeded・#74）。60 分へ引き上げ、
+	// 真にハングした場合だけ止める余裕を残す。他指標（面積/人口/地価）は数秒で終わるため無害（早い指標を妨げない）。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Minute)
 	defer cancel()
 
 	switch metric {

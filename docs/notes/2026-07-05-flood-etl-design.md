@@ -189,7 +189,7 @@ SELECT au.code, au.unit_kind, $1,
        $2, $3
 FROM admin_unit au
 LEFT JOIN LATERAL (
-    SELECT ST_Area( ST_Union( ST_Intersection(f.geom, au.geom, 1e-9), 1e-9 )::geography )  -- R1：結合してから面積（gridSize=堅牢化）
+    SELECT ST_Area( ST_Union( ST_Intersection(f.geom, au.geom, 0.000000001), 0.000000001 )::geography )  -- R1：結合してから面積（gridSize=1e-9=堅牢化）
            / NULLIF(ST_Area(au.geom::geography), 0) * 100 AS rate               -- ÷区面積×100＝%（0..100）
     FROM flood_poly f
     WHERE ST_Intersects(f.geom, au.geom)
@@ -218,7 +218,7 @@ WHERE au.unit_kind = 'municipality'
 > 設計 §3 の集計 SQL の**意味（該当面積率＝結合してから面積÷区面積×100・R1〜R6）は変えていない**。東京の実データ（浸水ポリゴン **約74.7万件**）で走らせて判明した3つの運用上の壁を、意味を保ったまま塞いだ。値は堅牢化の有無で **7桁一致**（東京69区 min 0.00 / max 78.76 / avg 18.54・>100 は0件＝R1 健全）。
 
 1. **メモリ**：全ポリゴンを Go の蓄積器に溜める素朴な実装だと東京だけで RSS ~2.3GB（1都3県＝4倍でホスト 7.6GB を食い潰す）。→ **1ファイルずつ読み、そのタイル分だけ即 COPY して解放**（`parseFloodTile`＋逐次 COPY）。実測 RSS ~160MB に低下。値は不変（COPY 先の `flood_poly` の中身は同じ）。
-2. **時間（timeout）**：区ごとの `ST_Union` は重く、東京69区で ~6.5 分。`cmd/ingest` の 5 分上限を超えて失敗した。→ **上限を 30 分へ**（他指標は数秒ゆえ無害な余裕）。集計 SQL は不変。
+2. **時間（timeout）**：区ごとの `ST_Union` は重く、東京69区で ~6.5 分。`cmd/ingest` の 5 分上限を超えて失敗した。→ 当初 **30 分へ**引き上げたが、#74 仕上げの冪等再投入（1都3県・259 区）で **30 分上限も INSERT 途中で `context deadline exceeded`**（COPY ~15 分＋区ごと ST_Union の INSERT で合算 30 分超・gridSize の +13% も効く）。→ **上限を 60 分へ**（真にハングした場合だけ止める余裕）。集計 SQL は不変。※初回投入（現行 DB の 259 行）は成功済みで層1検証は通っている。再投入の TX は失敗時にロールバックし既存 259 行はそのまま残る＝DELETE→INSERT の原子性が保たれる（R5・部分state/二重登録なし）。
 3. **GEOS の堅牢性**：GEOS 3.9 は多数の複雑ポリゴン union で `TopologyException: Ring edge missing` を**非決定的**に投げる（同じ入力で通ったり落ちたり）。→ `ST_Union`/`ST_Intersection` に **`gridSize=1e-9`**（精度モデル overlay＝OverlayNG）を与え決定的・堅牢に。1e-9度は座標分解能よりはるかに細かく値は不変。時間コストは +13%（6.5 分）。GEOS 3.12+ では不要になりうる。
 
 ---
