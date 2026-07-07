@@ -33,7 +33,7 @@ func main() {
 	pref := flag.String("pref", "", "対象都道府県コード（2桁・例: 13）")
 	// -metric を指定すると指標投入モード（取得・鍵不要・DB 接続のみ）。N03 正規化とは別経路。
 	// 対応指標：area_km2（admin_unit から算出）／pop_change_rate_2020_2050（XKT013 タイル群を集計・要 -data）。
-	metric := flag.String("metric", "", "投入する指標キー（例: area_km2, pop_change_rate_2020_2050, aging_rate_2050, land_price_median）。指定時は指標投入モード（year/pref 不要）")
+	metric := flag.String("metric", "", "投入する指標キー（例: area_km2, pop_change_rate_2020_2050, aging_rate_2050, land_price_median, flood_area_coverage_rate）。指定時は指標投入モード（year/pref 不要）")
 	// -data は指標がローカルのファイル群（取得済みタイル等）を読む場合の入力ディレクトリ。
 	// area_km2 のような算出指標では不要。pop_change_rate_2020_2050 は data/xkt013/<vintage>、
 	// land_price_median は data/xpt002/<year>（いずれも pref サブディレクトリを再帰探索）を指す。
@@ -73,10 +73,14 @@ func runMetric(metric, dataDir string) error {
 		return err
 	}
 
-	// 算出/集計は数百件〜数十万メッシュゆえ短時間だが、止まったら気づけるよう上限を置く（Ctrl-C でも中断可）。
+	// 算出/集計は多くの指標で数秒〜数分だが、止まったら気づけるよう上限を置く（Ctrl-C でも中断可）。
+	// 上限は 60 分：洪水(flood_area_coverage_rate)は交差面積按分の ST_Union が重く、1都3県で数十万〜
+	// 百万のポリゴンを区ごとに結合するため、COPY(~15分)＋区ごと ST_Union の INSERT で 30 分を超える
+	// （実測・GEOS 3.9・当初の 30 分上限は INSERT 途中で context deadline exceeded・#74）。60 分へ引き上げ、
+	// 真にハングした場合だけ止める余裕を残す。他指標（面積/人口/地価）は数秒で終わるため無害（早い指標を妨げない）。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Minute)
 	defer cancel()
 
 	switch metric {
@@ -126,8 +130,24 @@ func runMetric(metric, dataDir string) error {
 		log.Printf("ingest: 指標投入完了 metric=%s year=%d 投入件数=%d (present=%d none=%d) 中央値[min=%.0f max=%.0f]円/㎡ 採用点=%d 重複skip=%d 非住宅skip=%d 価格不良skip=%d",
 			res.Metric, year, res.Inserted, res.Present, res.None, res.MinYen, res.MaxYen, res.PointsParsed, res.DupSkipped, res.NonResiSkip, res.BadPriceSkip)
 		return nil
+	case "flood_area_coverage_rate":
+		if dataDir == "" {
+			return fmt.Errorf("-metric=flood_area_coverage_rate は -data を要する（例: -data=data/xkt026/2024。先に scripts/fetch-xkt026.sh）")
+		}
+		// 版年は -data 末尾のディレクトリ名（<year>）から取る（data/xkt026/2024 → 2024・取得物と投入年を一致）。
+		year, err := yearFromDataDir(dataDir)
+		if err != nil {
+			return err
+		}
+		res, err := ingest.ComputeFloodAreaCoverage(ctx, dsn, dataDir, year)
+		if err != nil {
+			return err
+		}
+		log.Printf("ingest: 指標投入完了 metric=%s year=%d 投入件数=%d (present=%d none=%d) 該当面積率[min=%.2f max=%.2f]%% ポリゴン=%d",
+			res.Metric, year, res.Inserted, res.Present, res.None, res.MinRate, res.MaxRate, res.PolygonsParsed)
+		return nil
 	default:
-		return fmt.Errorf("未対応の -metric=%q（対応: area_km2, pop_change_rate_2020_2050, aging_rate_2050, land_price_median）", metric)
+		return fmt.Errorf("未対応の -metric=%q（対応: area_km2, pop_change_rate_2020_2050, aging_rate_2050, land_price_median, flood_area_coverage_rate）", metric)
 	}
 }
 
@@ -223,15 +243,15 @@ FROM (SELECT ST_Extent(geom) AS e FROM admin_unit
 	return tilegrid.BBox{MinLon: minLon, MinLat: minLat, MaxLon: maxLon, MaxLat: maxLat}, nil
 }
 
-// yearFromDataDir は data/xpt002/<year> の末尾ディレクトリ名から年（4桁）を取り出す。
+// yearFromDataDir は data/<dataset>/<year> の末尾ディレクトリ名から年（4桁）を取り出す。
 //
-// 取得年を -data パスの規約（配置規約 data/xpt002/<year>/<pref>/）から一意に決める＝別フラグを増やさず
-// 取得物と投入年を食い違わせない（取得したファイルの年 = 投入する year）。
+// 取得年を -data パスの規約（配置規約 data/xpt002/<year>/<pref>/・data/xkt026/<year>/<pref>/ 等）から
+// 一意に決める＝別フラグを増やさず取得物と投入年を食い違わせない（取得したファイルの年 = 投入する year）。
 func yearFromDataDir(dataDir string) (int, error) {
 	base := filepath.Base(filepath.Clean(dataDir))
 	y, err := strconv.Atoi(base)
 	if err != nil || y < 1995 || y > 2100 {
-		return 0, fmt.Errorf("-data の末尾が年(4桁)でない（%q）。配置規約 data/xpt002/<year> に合わせる", dataDir)
+		return 0, fmt.Errorf("-data の末尾が年(4桁)でない（%q）。配置規約 data/<dataset>/<year> に合わせる", dataDir)
 	}
 	return y, nil
 }
