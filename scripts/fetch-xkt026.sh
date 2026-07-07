@@ -90,12 +90,22 @@ empty=0
 for PREF in "${PREFS[@]}"; do
   DEST_DIR="${REPO_ROOT}/data/xkt026/${YEAR}/${PREF}"
   mkdir -p "$DEST_DIR"
-  echo "  pref=${PREF} dest=${DEST_DIR}"
+  # 処理済みタイルの目印（z_x_y を1行ずつ追記）。取得が途中で止められても、再実行時にここを見て
+  # 済みタイルを飛ばす＝レジューム可能にする（約6960枚の長時間バッチは環境都合で中断されうるため。
+  # 空タイルはファイルを残さないので「ファイルの有無」だけでは再取得を防げない＝別途この台帳で判定する）。
+  DONE_LOG="${DEST_DIR}/.fetched.log"
+  touch "$DONE_LOG"
+  echo "  pref=${PREF} dest=${DEST_DIR}（済み=$(wc -l < "$DONE_LOG") タイルは飛ばす）"
 
   # タイル範囲を go から取得（bbox→z/x/y。単一の真実＝tilegrid）。stdout に「z x y」1行ずつ。
   # cd せず -C で作業ディレクトリを固定（go module ルート）。POSTGRES_* は source 済み（ST_Extent 用）。
   while read -r tz tx ty; do
     [ -z "$tz" ] && continue
+    key="${tz}_${tx}_${ty}"
+    # レジューム：既に処理済み（済み台帳にある）なら飛ばす（済みタイルの再取得を避ける）。
+    if grep -qxF "$key" "$DONE_LOG"; then
+      continue
+    fi
     out="${DEST_DIR}/z${tz}_${tx}_${ty}.geojson"
     url="${BASE_URL}?response_format=geojson&z=${tz}&x=${tx}&y=${ty}"
     # 鍵はヘッダ（--config 経由）。URL とファイル名のみ端末に出る（鍵は出ない）。
@@ -117,6 +127,8 @@ for PREF in "${PREFS[@]}"; do
     else
       total=$((total + 1))
     fi
+    # 成功したタイルを済み台帳へ記録（成功後にのみ記録＝失敗タイルは次回再取得される）。
+    printf '%s\n' "$key" >> "$DONE_LOG"
     # レート制御：1タイルごとに小休止（連続で叩かない）。枚数が多いため控えめに。
     sleep 0.5
   done < <("$INGEST_BIN" -tiles -pref="$PREF" -z="$Z")
